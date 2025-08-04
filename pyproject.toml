@@ -15,6 +15,5 @@ dependencies = [
     "torchvision>=0.11.3",
 ]
 
-[tool.setuptools]
-packages = ["find:"]
-where = "src"
+[tool.uv]
+package = true
