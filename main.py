@@ -5,7 +5,7 @@ from typing import Any, cast
 import ignite.distributed as idist
 from ignition.data import denormalize, setup_data
 from ignite.engine import Events
-from ignite.handlers import LRScheduler
+from ignite.handlers import LRScheduler, ProgressBar
 from ignite.metrics import ConfusionMatrix, IoU, mIoU
 from ignite.utils import manual_seed
 from ignition.models import setup_model
@@ -45,6 +45,7 @@ def run(local_rank: int, config: Any):
 
     # model, optimizer, loss function, device
     device = idist.device()
+
     model = idist.auto_model(setup_model(config))
     optimizer = idist.auto_optim(
         optim.SGD(
@@ -73,7 +74,7 @@ def run(local_rank: int, config: Any):
     metrics = {"IoU": IoU(cm_metric), "mIoU_bg": mIoU(cm_metric)}
 
     # trainer and evaluator
-    trainer = setup_trainer(config, model, optimizer, loss_fn, device, dataloader_train.sampler)
+    trainer = setup_trainer(config, model, optimizer, loss_fn, device)
     evaluator = setup_evaluator(config, model, metrics, device)
 
     # setup engines logger with python logging
@@ -133,6 +134,7 @@ def run(local_rank: int, config: Any):
             event_name=Events.ITERATION_COMPLETED(event_filter=custom_event_filter),
         )
 
+
     # print metrics to the stderr
     # with `add_event_handler` API
     # for training stats
@@ -147,7 +149,7 @@ def run(local_rank: int, config: Any):
     # print metrics to the stderr
     # again with `add_event_handler` API
     # for evaluation stats
-    @trainer.on(Events.EPOCH_COMPLETED(every=1))
+    @trainer.on(Events.EPOCH_COMPLETED(every=config.eval_every_epochs))
     def _():
         evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
         log_metrics(evaluator, "eval")
@@ -156,6 +158,13 @@ def run(local_rank: int, config: Any):
     @trainer.on(Events.STARTED)
     def _():
         evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
+
+    logger.info("Start training for %d epochs", config.max_epochs)
+
+    if rank == 0:
+        pbar = ProgressBar()
+        pbar.attach(trainer, output_transform=lambda output: {"train_loss": output["train_loss"]})
+        # pbar.attach(trainer)
 
     # setup if done. let's run the training
     trainer.run(
@@ -186,6 +195,8 @@ def main(cfg: DictConfig):
     config = setup_config(cfg)
     with idist.Parallel(config.backend) as p:
         p.run(run, config=config)
+
+    print("Training completed successfully!")
 
 
 if __name__ == "__main__":
