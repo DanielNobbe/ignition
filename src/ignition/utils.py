@@ -185,5 +185,31 @@ def lambda_lr_scheduler(iteration, lr0, n, a):
     return lr0 * pow((1.0 - 1.0 * iteration / n), a)
 
 
+def model_eval_output_transform(x, y, y_pred):
+    # breakpoint()
+    # print(args, kwargs)
+    # return output["out"]
+    """Transform model output for evaluation.
+    For some reason, the model returns a dict with 'out' key.
+    For some reason, this needs to return a tuple for the evaluator to work correctly.
+    """
+    return y_pred['out'], y
+    
 def model_output_transform(output):
-    return output["out"]
+    """Transform model output for training."""
+    return output['out']
+
+def model_train_output_transform(x, y, y_pred, loss):
+    # breakpoint()
+    # print(args, kwargs)
+    # return output["out"]
+    """Transform model output for evaluation.
+    For some reason, the model returns a dict with 'out' key.
+    For some reason, this needs to return a tuple for the evaluator to work correctly.
+    """
+    return {
+        'y_pred': y_pred, 
+        'y': y,
+        'train_loss': loss.item()
+    }
+    
