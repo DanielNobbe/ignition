@@ -11,3 +11,9 @@ wheels/
 
 # log files
 logs/
+
+# IDE specific files
+.vscode/
+
+# (personal) shell scripts
+sh/
