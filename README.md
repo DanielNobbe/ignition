@@ -10,13 +10,14 @@ The dataset used in this template is quite substantial, with a size of several G
 To download the dataset:
 
 ```python
-python -c "from data import download_datasets; download_datasets('/path/to/data')"
+python -c "from ignition.data import download_datasets; download_datasets('/path/to/data')"
+
 ```
 
 or
 
 ```py
-from data import download_datasets
+from ignition.data import download_datasets
 download_datasets('/path/to/data')
 ```
 
