@@ -25,6 +25,20 @@ class TransformedDataset(Dataset):
     def __getitem__(self, index):
         dp = self.ds[index]
         return self.transform_fn(**dp)
+    
+class IgnoreMaskBoundaries(A.DualTransform):
+    def __init__(self, always_apply=True, p=1.0):
+        super().__init__(always_apply=always_apply, p=p)
+
+    def apply(self, img, **params):
+        # If no change to image, just pass it through
+        return img
+
+    def apply_to_mask(self, mask, **params):
+        mask = mask.copy()
+        mask[mask == 255] = 0
+        return mask
+
 
 
 class VOCSegmentationPIL(VOCSegmentation):
@@ -104,7 +118,7 @@ def setup_data(config: Namespace):
             A.HorizontalFlip(),
             A.Blur(blur_limit=3),
             A.Normalize(mean=mean, std=std),
-            ignore_mask_boundaries,
+            IgnoreMaskBoundaries(),
             ToTensor(),
         ]
     )
@@ -113,13 +127,22 @@ def setup_data(config: Namespace):
         [
             A.PadIfNeeded(val_img_size, val_img_size, border_mode=cv2.BORDER_CONSTANT),
             A.Normalize(mean=mean, std=std),
-            ignore_mask_boundaries,
+            IgnoreMaskBoundaries(),
             ToTensor(),
         ]
     )
 
     dataset_train = TransformedDataset(dataset_train, transform_fn=transform_train)
     dataset_eval = TransformedDataset(dataset_eval, transform_fn=transform_eval)
+
+    if config.data_subset_size is not None:
+        train_subset_size = int(len(dataset_train) * config.data_subset_size)
+        eval_subset_size = int(len(dataset_eval) * config.data_subset_size)
+        if train_subset_size <= 0 or eval_subset_size <= 0:
+            raise ValueError("data_subset_size must result in at least one sample for both subsets.")
+        dataset_train = torch.utils.data.Subset(dataset_train, range(train_subset_size))
+        dataset_eval = torch.utils.data.Subset(dataset_eval, range(eval_subset_size))
+
 
     dataloader_train = idist.auto_dataloader(
         dataset_train,
