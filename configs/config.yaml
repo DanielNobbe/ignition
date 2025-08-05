@@ -1,5 +1,4 @@
 seed: 777 # random seed
-data_path: /Users/daniel/data/ # input data path
 batch_size: 48 # train batch size
 eval_batch_size: 32 # evaluation batch size
 num_workers: 10 # number of subprocesses to use for data loading
@@ -18,9 +17,26 @@ lr: 0.02 # learning rate
 accumulation_steps: 1 # parameter for gradient accumulation
 eval_every_epochs: 10 # evaluate every n epochs
 num_classes: 21 # number of classes for segmentation
-data_subset_size: 0.1 # subset size for data, 0.1 means 10% of the data. If set to null, the full dataset is used
 backend: gloo
+task: segmentation # task type
 model:
   type: torchvision # model type
   name: deeplabv3_mobilenet_v3_large # model name
   pretrained: true # use pretrained weights
+dataset:
+  type: VOCSegmentationPairedDataset # dataset type
+  root: /Users/daniel/data/ # dataset root path
+  download: false # download the dataset if not present
+  subset_size: 0.1 # subset size for the dataset, 0.1 means 10% of the data. If set to null, the full dataset is used
+  train:
+    img_size: 480 # image size for training
+  val:
+    img_size: 513 # image size for validation
+  # TODO: These could also be part of transform settings
+  mean: [0.485, 0.456, 0.406]
+  std: [0.229, 0.224, 0.225] # normalization values for the dataset
+  # datasets:
+  #   train:
+  #     type: VOCSegmentation # dataset type, does not matter if paired dataset type is specified
+  #     root: /Users/daniel/data/VOCdevkit # dataset root path
+  #     download: true # download the dataset if not present
