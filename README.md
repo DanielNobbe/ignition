@@ -1,63 +1,15 @@
-[![Code-Generator](https://badgen.net/badge/Template%20by/Code-Generator/ee4c2c?labelColor=eaa700)](https://github.com/pytorch-ignite/code-generator)
+## Ignition
+Ignition is a lightweight PyTorch Ignite-based model training and evaluation framework.
 
-# Segmentation Template
+Some baseline model architectures, datasets, loss functions and training utilities are implemented, and these can be easily expanded by adding them under the relevant directories and to the `setup_x` functions in the `__init__.py` files.
 
-This is the segmentation template by Code-Generator using `deeplabv3_resnet101` and `cifar10` dataset from TorchVision and training is powered by PyTorch and PyTorch-Ignite.
+Our aim is to allow configuring experiments fully through config files, and we use OmegaConf and Hydra to achieve this. Generally, we want to increase the number of classes, and allow more configurations, without breaking anything, although we may make breaking changes.
 
-**Note:**
-The dataset used in this template is quite substantial, with a size of several GBs and automatically downloading it can be seen as an unexpected behaviour. To prevent unexpected behavior or excessive bandwidth usage, the automatic downloading of the dataset has been disabled by default.
-
-To download the dataset:
-
-```python
-python -c "from ignition.data import download_datasets; download_datasets('/path/to/data')"
-
+Running the main script can best be done through torchrun:
 ```
-
-or
-
-```py
-from ignition.data import download_datasets
-download_datasets('/path/to/data')
-```
-
-## Getting Started
-
-Install the dependencies with `pip`:
-
-```sh
-pip install -r requirements.txt --progress-bar off -U
-```
-
-### Code structure
-
-```
-|
-|- README.md
-|
-|- main.py : main script to run
-|- data.py : helper module with functions to setup input datasets and create dataloaders
-|- models.py : helper module with functions to create a model or multiple models
-|- trainers.py : helper module with functions to create trainer and evaluator
-|- utils.py : module with various helper functions
-|- vis.py : helper module for data visualizations
-|- requirements.txt : dependencies to install with pip
-|
-|- config.yaml : global configuration YAML file
-|
-|- test_all.py : test file with few basic sanity checks
-```
-
-## Training
-
-### Multi GPU Training (`torchrun`) (recommended)
-
-```sh
 torchrun \
   --nproc_per_node 1 \
-  main.py --config-dir=[dir-path] \
-  --config-name=[config-name] ++backend= nccl \
-  override_arg=[value]
-```
+  main.py --config-dir=configs \
+  --config-name=config.yaml
 
-Note: We use Hydra with [OmegaConfig](https://omegaconf.readthedocs.io/en/2.3_branch/) as the default argument parser here. For more information check the [Hydra docs](https://hydra.cc)
+```
