@@ -3,7 +3,7 @@ from pprint import pformat
 from typing import Any, cast
 
 import ignite.distributed as idist
-from ignition.data import denormalize, setup_data
+from ignition.datasets import setup_dataset
 from ignite.engine import Events
 from ignite.handlers import LRScheduler, ProgressBar
 from ignite.metrics import ConfusionMatrix, IoU, mIoU, Loss
@@ -12,7 +12,7 @@ from ignition.models import setup_model
 from torch import nn, optim
 from torch.optim.lr_scheduler import LambdaLR
 from ignition.trainers import setup_evaluator, setup_trainer
-
+from ignition.data.utils import denormalize
 from ignite.contrib.handlers.tensorboard_logger import TensorboardLogger
 
 
@@ -43,7 +43,9 @@ def run(local_rank: int, config: Any):
     config.output_dir = output_dir
 
     # donwload datasets and create dataloaders
-    dataloader_train, dataloader_eval = setup_data(config)
+    dataset = setup_dataset(config)
+    dataloader_train = dataset.get_train_dataloader()
+    dataloader_eval = dataset.get_eval_dataloader()
     le = len(dataloader_train)
 
     # model, optimizer, loss function, device
@@ -82,8 +84,8 @@ def run(local_rank: int, config: Any):
     }
 
     # trainer and evaluator
-    trainer = setup_trainer(config, model, optimizer, loss_fn, device, train_metrics)
-    evaluator = setup_evaluator(config, model, metrics, device)
+    trainer = setup_trainer(config, model, optimizer, loss_fn, device, dataset.get_prepare_batch(), train_metrics)
+    evaluator = setup_evaluator(config, model, metrics, device, dataset.get_prepare_batch())
 
     # setup engines logger with python logging
     # print training configurations
