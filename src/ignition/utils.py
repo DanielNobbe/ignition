@@ -183,8 +183,6 @@ def setup_handlers(
     return ckpt_handler_train, ckpt_handler_eval
 
 
-def lambda_lr_scheduler(iteration, lr0, n, a):
-    return lr0 * pow((1.0 - 1.0 * iteration / n), a)
 
 
     

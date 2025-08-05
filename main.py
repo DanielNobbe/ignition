@@ -3,21 +3,21 @@ from pprint import pformat
 from typing import Any, cast
 
 import ignite.distributed as idist
-from ignition.datasets import setup_dataset
 from ignite.engine import Events
 from ignite.handlers import LRScheduler, ProgressBar
-from ignite.metrics import ConfusionMatrix, IoU, mIoU, Loss
 from ignite.utils import manual_seed
-from ignition.models import setup_model
-from torch import nn, optim
-from torch.optim.lr_scheduler import LambdaLR
+
+
+from ignition.datasets import setup_dataset
 from ignition.trainers import setup_evaluator, setup_trainer
 from ignition.data.utils import denormalize
-from ignite.contrib.handlers.tensorboard_logger import TensorboardLogger
-
-
+from ignition.models import setup_model
 from ignition.vis import predictions_gt_images_handler
 from ignition.utils import *
+from ignition.losses import setup_loss
+from ignition.lr_schedulers import setup_lr_scheduler
+from ignition.optimizers import setup_optimizer
+from ignition.metrics import setup_metrics
 import sys
 
 import hydra
@@ -42,7 +42,7 @@ def run(local_rank: int, config: Any):
 
     config.output_dir = output_dir
 
-    # donwload datasets and create dataloaders
+    # load datasets and create dataloaders
     dataset = setup_dataset(config)
     dataloader_train = dataset.get_train_dataloader()
     dataloader_eval = dataset.get_eval_dataloader()
@@ -51,41 +51,16 @@ def run(local_rank: int, config: Any):
     # model, optimizer, loss function, device
     device = idist.device()
 
-    # model = setup_model(config)
     model = idist.auto_model(setup_model(config))
     optimizer = idist.auto_optim(
-        optim.SGD(
-            model.get_parameters(),
-            lr=1.0,
-            momentum=0.9,
-            weight_decay=5e-4,
-            nesterov=False,
-        )
+        setup_optimizer(model.get_parameters(), config)
     )
-    loss_fn = nn.CrossEntropyLoss().to(device=device)
-    lr_scheduler = LambdaLR(
-        optimizer,
-        lr_lambda=[
-            partial(
-                lambda_lr_scheduler,
-                lr0=config.lr,
-                n=config.max_epochs * le,
-                a=0.9,
-            )
-        ],
-    )
-
-    # setup metrics
-    cm_metric = ConfusionMatrix(num_classes=config.num_classes)
-    metrics = {"IoU": IoU(cm_metric), "mIoU_bg": mIoU(cm_metric)}
-
-    train_metrics = {
-        'epoch_loss': Loss(loss_fn, output_transform=model.get_train_values_output_transform()),
-    }
+    loss_fn = setup_loss(config).to(device=device)
+    lr_scheduler = setup_lr_scheduler(optimizer, config, le)
 
     # trainer and evaluator
-    trainer = setup_trainer(config, model, optimizer, loss_fn, device, dataset.get_prepare_batch(), train_metrics)
-    evaluator = setup_evaluator(config, model, metrics, device, dataset.get_prepare_batch())
+    trainer = setup_trainer(config, model, optimizer, loss_fn, device, dataset.get_prepare_batch(), setup_metrics(config, 'train', loss_fn, model))
+    evaluator = setup_evaluator(config, model, setup_metrics(config, 'eval'), device, dataset.get_prepare_batch())
 
     # setup engines logger with python logging
     # print training configurations
@@ -174,7 +149,6 @@ def run(local_rank: int, config: Any):
     if rank == 0:
         pbar = ProgressBar()
         pbar.attach(trainer, output_transform=lambda output: {"train_loss": output["train_loss"]})
-        # pbar.attach(trainer)
 
     # setup if done. let's run the training
     trainer.run(

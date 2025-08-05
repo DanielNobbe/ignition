@@ -40,3 +40,23 @@ dataset:
   #     type: VOCSegmentation # dataset type, does not matter if paired dataset type is specified
   #     root: /Users/daniel/data/VOCdevkit # dataset root path
   #     download: true # download the dataset if not present
+loss:
+  type: CrossEntropyLoss # loss type
+  ignore_index: 255 # index to ignore in the loss calculation. Use -100 for default PyTorch behavior
+  label_smoothing: 0.0
+lr_scheduler:
+  type: PolynomialLR # learning rate scheduler type
+  power: 0.9 # power for the polynomial decay
+optimizer:
+  type: SGD
+  lr: 0.02 # base learning rate for the optimizer
+  momentum: 0.9 # momentum for the optimizer
+  weight_decay: 5.0e-4 # weight decay for the optimizer
+  nesterov: false # use Nesterov momentum
+metrics:
+  eval:
+    type: SegmentationMetrics # evaluation metrics type
+    iou: true # use IoU metric
+    mIoU: true # use mean IoU metric
+  train:
+    type: LossMetric # training metrics type

@@ -6,4 +6,4 @@ def setup_dataset(config):
             config=config,
         )
     else:
-        raise ValueError(f"Dataset type {config.dataset.type} is not supported.")
+        raise ValueError(f"Dataset type {config.dataset.type} is not supported. It can be implemented in the datasets directory.")
