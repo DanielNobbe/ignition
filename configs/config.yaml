@@ -20,6 +20,7 @@ eval_every_epochs: 10 # evaluate every n epochs
 num_classes: 21 # number of classes for segmentation
 data_subset_size: 0.1 # subset size for data, 0.1 means 10% of the data. If set to null, the full dataset is used
 backend: gloo
-model: 
+model:
+  type: torchvision # model type
   name: deeplabv3_mobilenet_v3_large # model name
   pretrained: true # use pretrained weights

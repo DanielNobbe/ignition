@@ -49,10 +49,11 @@ def run(local_rank: int, config: Any):
     # model, optimizer, loss function, device
     device = idist.device()
 
+    # model = setup_model(config)
     model = idist.auto_model(setup_model(config))
     optimizer = idist.auto_optim(
         optim.SGD(
-            model.parameters(),
+            model.get_parameters(),
             lr=1.0,
             momentum=0.9,
             weight_decay=5e-4,
@@ -77,7 +78,7 @@ def run(local_rank: int, config: Any):
     metrics = {"IoU": IoU(cm_metric), "mIoU_bg": mIoU(cm_metric)}
 
     train_metrics = {
-        'epoch_loss': Loss(loss_fn, output_transform=lambda x: (x['y_pred'], x['y'])),
+        'epoch_loss': Loss(loss_fn, output_transform=model.get_train_values_output_transform()),
     }
 
     # trainer and evaluator
