@@ -6,12 +6,15 @@ import ignite.distributed as idist
 from ignition.data import denormalize, setup_data
 from ignite.engine import Events
 from ignite.handlers import LRScheduler, ProgressBar
-from ignite.metrics import ConfusionMatrix, IoU, mIoU
+from ignite.metrics import ConfusionMatrix, IoU, mIoU, Loss
 from ignite.utils import manual_seed
 from ignition.models import setup_model
 from torch import nn, optim
 from torch.optim.lr_scheduler import LambdaLR
 from ignition.trainers import setup_evaluator, setup_trainer
+
+from ignite.contrib.handlers.tensorboard_logger import TensorboardLogger
+
 
 from ignition.vis import predictions_gt_images_handler
 from ignition.utils import *
@@ -73,8 +76,12 @@ def run(local_rank: int, config: Any):
     cm_metric = ConfusionMatrix(num_classes=config.num_classes)
     metrics = {"IoU": IoU(cm_metric), "mIoU_bg": mIoU(cm_metric)}
 
+    train_metrics = {
+        'epoch_loss': Loss(loss_fn, output_transform=lambda x: (x['y_pred'], x['y'])),
+    }
+
     # trainer and evaluator
-    trainer = setup_trainer(config, model, optimizer, loss_fn, device)
+    trainer = setup_trainer(config, model, optimizer, loss_fn, device, train_metrics)
     evaluator = setup_evaluator(config, model, metrics, device)
 
     # setup engines logger with python logging

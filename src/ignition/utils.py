@@ -7,6 +7,8 @@ from typing import Any, Mapping, Optional, Union
 import ignite.distributed as idist
 import torch
 from ignite.contrib.engines import common
+from ignite.contrib.handlers.tensorboard_logger import OutputHandler
+
 from ignite.engine import Engine
 from ignite.engine.events import Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
@@ -205,7 +207,6 @@ def model_train_output_transform(x, y, y_pred, loss):
     # return output["out"]
     """Transform model output for evaluation.
     For some reason, the model returns a dict with 'out' key.
-    For some reason, this needs to return a tuple for the evaluator to work correctly.
     """
     return {
         'y_pred': y_pred, 
