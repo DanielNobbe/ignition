@@ -2,6 +2,8 @@ from .abstract import IgnitionModel
 
 from torchvision.models.segmentation import deeplabv3_resnet50, deeplabv3_mobilenet_v3_large
 
+from ignite.utils import convert_tensor
+
 
 class TorchVisionSegmentationModel(IgnitionModel):
     # NOTE: SHould this be a nn.Module? Would allow us to use
@@ -36,7 +38,7 @@ class TorchVisionSegmentationModel(IgnitionModel):
     def get_parameters(self):
         """Returns the parameters of the model, for initializing the optimizer."""
         return self.model.parameters()
-
+    
     def get_model_transform(self):
         def model_transform(output):
             """Transform model output for training.

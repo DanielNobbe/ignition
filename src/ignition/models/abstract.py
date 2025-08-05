@@ -1,32 +1,3 @@
-# NOTE: COuld be in __init__.py, but keeping it here for clarity
-
-
-"""
-Each model should be a class, inheriting from AbstractModel, with the following methods:
-
-- get_model: returns the model in a format expected by Ignite
-    - a torch.nn.Module that can be trained using a typical Pytorch training loop
-- get_parameters: returns the parameters of the model, for initializing the optimizer
-- get_model_transform: returns a function that transforms the model output to the format expected by Ignite
-    --> This ensures the output is a tensor of values, i.e. the pure model output
-- get_train_output_transform: 
-        "function that receives 'x', 'y', 'y_pred', 'loss' and returns value
-            to be assigned to engine's state.output after each iteration. Default is returning `loss.item()`."
-    --> This sets the trainers internal state, so we can do whatever makes sense.
-    --> Current implementation relies on having this dict: {'y_pred': y_pred, 'y': y,'train_loss': loss.item()}
-- get_eval_output_transform: 
-        "function that receives 'x', 'y', 'y_pred' and returns value
-            to be assigned to engine's state.output after each iteration. Default is returning `(y_pred, y,)` which fits
-            output expected by metrics. If you change it you should use `output_transform` in metrics."
-        --> So here it makes sense to keep the tuple output, as it is expected by the metrics.
-
-maybe we also add:
-- get_loss_function: returns the loss function to be used for training
-    --> this removes some flexibility, but typically a model arch depends on a certain loss fn
-    --> probably best to have them separately
-
-"""
-
 import torch
 from torch import nn
 
@@ -49,21 +20,32 @@ class IgnitionModel(nn.Module):
     def get_parameters(self) -> nn.Parameter:
         """Returns the parameters of the model, for initializing the optimizer."""
         return self.get_model().parameters()
-    
 
+    # NOTE: Could also specify these functions as properties, which would allow for us to check their inputs/outputs. This would not allow to use the config to set the function, but the function would still have access to the config. In the end it comes down to a difference in memory, but that's not a big deal.
+    # only the get_model_transform does not always have the same input signature. So for uniformity, we keep all as returning a method.
     def get_model_transform(self) -> Callable:
         """Returns a function that transforms the model output to the format expected by Ignite."""
         raise NotImplementedError("This method should be implemented by subclasses.")
     
-    def get_train_output_transform(self) -> Callable:
-        """Returns a function that transforms the model output for training."""
+    def get_model_transform(self) -> Callable:
+        """Returns a function that transforms the model output for training. The returned function has 
+        inputs:  x, y, y_pred, loss
+        outputs: {'y_pred': y_pred, 'y': y, 'train_loss': loss.item()} (this may be dependent on the task)
+        """
         raise NotImplementedError("This method should be implemented by subclasses.")
     
     def get_train_values_output_transform(self):
         """Specify how to get the predictions and targets from the output from the train_model_output_transform.
-        Needed to recompute the loss for logging."""
+        Needed to recompute the loss for logging.
+        The returned function has
+        inputs: {'y_pred': y_pred, 'y': y, 'train_loss': loss.item()}
+        outputs: (y_pred, y)
+        """
         raise NotImplementedError("This method should be implemented by subclasses.")
     
     def get_eval_output_transform(self) -> Callable:
-        """Returns a function that transforms the model output for evaluation."""
+        """Returns a function that transforms the model output for evaluation.
+        The returned function has
+        inputs: x, y, raw_model_output
+        outputs: (y_pred, y)"""
         raise NotImplementedError("This method should be implemented by subclasses.")
