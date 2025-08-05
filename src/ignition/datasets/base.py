@@ -23,14 +23,14 @@ Maybe we could specify transforms in e.g. the config.
 
 import torch
 from warnings import warn
-
+from abc import ABC, abstractmethod
 
 """
 We first make a class that can create and hold a single
 dataset, and return a dataloader for it.
 
 """
-class IgnitionDataset:
+class IgnitionDataset(ABC):
     def __init__(self, config, name='train'):
         self.name = name
         # if name in config, use it, otherwise assume there
@@ -40,9 +40,11 @@ class IgnitionDataset:
         self.dataset = self._setup_dataset()
         self.dataloader = self._setup_dataloader()
 
+    @abstractmethod
     def _setup_dataset(self):
         raise NotImplementedError("This method should be implemented in a subclass")
     
+    @abstractmethod
     def _setup_dataloader(self):
         raise NotImplementedError("This method should be implemented in a subclass")
     
@@ -61,18 +63,10 @@ Note: We do not need to implement creating
 each individual dataset if we create the paired dataset directly.
 
 """
-class PairedDataset():
+class PairedDataset(ABC):
     def __init__(self, config):
         # assert len(config.dataset) == 2, "Config must contain exactly two datasets, a train and eval set. They can have any name."
         self.config = config
-        # self.train_dataset = IgnitionDataset(config, name=self._find_train_key())
-        # self.eval_dataset = IgnitionDataset(config, name=self._find_eval_key())
-
-        # setting up the dataset should be done in subclasses
-
-        # or we allow the user to enter datasets into the init function
-        # but probably best to allow setting up a paired
-        # dataset directly
         self._setup_datasets()
 
     def _find_train_key(self):
@@ -92,16 +86,20 @@ class PairedDataset():
         return list(self.config.dataset.keys())[1]
     
 
+    @abstractmethod
     def get_train_dataloader(self):
         raise NotImplementedError("This method should be implemented in a subclass")
     
+    @abstractmethod
     def get_eval_dataloader(self):
         raise NotImplementedError("This method should be implemented in a subclass")
     
+    @abstractmethod
     def _setup_datasets(self):
         """This method should be implemented in subclasses to set up the datasets."""
         raise NotImplementedError("This method should be implemented in a subclass")
 
+    @abstractmethod
     def get_prepare_batch(self):
         """Returns a function that prepares the batch for the model."""
         raise NotImplementedError("This method should be implemented in a subclass")

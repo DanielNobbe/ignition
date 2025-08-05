@@ -1,4 +1,4 @@
-from .abstract import IgnitionModel
+from .base import IgnitionModel
 
 from torchvision.models.segmentation import deeplabv3_resnet50, deeplabv3_mobilenet_v3_large
 

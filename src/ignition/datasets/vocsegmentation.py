@@ -9,7 +9,7 @@ from ignite.utils import convert_tensor
 import albumentations as A
 import cv2
 
-from .abstract import IgnitionDataset, PairedDataset
+from .base import IgnitionDataset, PairedDataset
 from ignition.data import TransformedDataset, IgnoreMaskBoundaries, ToTensor
 
 class VOCSegmentationPIL(VOCSegmentation):

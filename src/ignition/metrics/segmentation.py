@@ -2,7 +2,9 @@ from ignite.metrics import ConfusionMatrix, IoU, mIoU, Loss, Metric
 from ignite.engine import Engine, Events
 from typing import Dict
 
-class SegmentationMetrics:
+from .base import IgnitionMetrics
+
+class SegmentationMetrics(IgnitionMetrics):
     def __init__(self, config, metrics_name: str = 'eval'):
         self.cm_metric = ConfusionMatrix(num_classes=config.num_classes)
 

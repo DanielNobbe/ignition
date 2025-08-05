@@ -1,4 +1,4 @@
-from .abstract import IgnitionModel
+from .base import IgnitionModel
 from .torchvision import TorchVisionSegmentationModel
 
 def setup_model(config):

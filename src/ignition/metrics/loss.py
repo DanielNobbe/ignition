@@ -4,7 +4,9 @@ from ignite.metrics import ConfusionMatrix, IoU, mIoU, Loss, Metric
 from ignite.engine import Engine, Events
 from typing import Dict, Any, Optional, Union, Callable
 
-class LossMetric:
+from .base import IgnitionMetrics
+
+class LossMetric(IgnitionMetrics):
     """This metric class only gives the epoch loss."""
     def __init__(self, loss_fn: Callable, model: Module):
         self.loss_fn = loss_fn
