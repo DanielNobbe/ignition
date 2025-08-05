@@ -21,6 +21,7 @@ def setup_trainer(
     optimizer: Optimizer,
     loss_fn: Module,
     device: Union[str, torch.device],
+    metrics: Dict[str, Metric] = None,
 ) -> Union[Engine, DeterministicEngine]:
     prepare_batch = prepare_image_mask
 
@@ -41,6 +42,9 @@ def setup_trainer(
         model_transform=model_output_transform,
         output_transform=model_train_output_transform
     )
+
+    for name, metric in (metrics or {}).items():
+        metric.attach(trainer, name)
 
     return trainer
 
