@@ -11,10 +11,10 @@ class SegmentationMetrics(IgnitionMetrics):
         self.metrics = {}
         metrics_config = config.metrics.get(metrics_name)
         if metrics_config is not None:
-            if metrics_config.get("IoU", True):
-                self.metrics["IoU"] = IoU(self.cm_metric)
-            if metrics_config.get("mIoU_bg", True):
-                self.metrics["mIoU_bg"] = mIoU(self.cm_metric)
+            if metrics_config.get("miou", False):
+                self.metrics["mIoU"] = mIoU(self.cm_metric, ignore_index=metrics_config.background_index)
+            if metrics_config.get("iou", False):
+                self.metrics["IoU"] = IoU(self.cm_metric, ignore_index=metrics_config.background_index)
 
     def get_metrics(self) -> Dict[str, Metric]:
         return self.metrics
