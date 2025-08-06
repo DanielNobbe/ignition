@@ -15,7 +15,10 @@ from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.early_stopping import EarlyStopping
 from ignite.handlers.terminate_on_nan import TerminateOnNan
 from ignite.utils import setup_logger
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, listconfig
+
+from flatten_dict import flatten
+import numbers
 
 
 def setup_config(config):
@@ -36,7 +39,7 @@ def log_metrics(engine: Engine, tag: str) -> None:
     tag
         a string to add at the start of output.
     """
-    metrics_format = "{0} [{1}/{2}]: {3}".format(tag, engine.state.epoch, engine.state.iteration, engine.state.metrics)
+    metrics_format = "{0} [{1},{2}]: {3}".format(tag, engine.state.epoch, engine.state.iteration, engine.state.metrics)
     engine.logger.info(metrics_format)
 
 
@@ -123,6 +126,28 @@ def setup_logging(config: Any) -> Logger:
     return logger
 
 
+def dict2mdtable(d, key='Name', val='Value'):
+    rows = [f'| {key} | {val} |']
+    rows += ['|--|--|']
+    rows += [f'| {k} | {v} |' for k, v in d.items()]
+    return "  \n".join(rows)
+
+
+def log_config(config, tb_logger):
+    # Note sure how to type annotate the logger here
+    """Log configuration to the logger, under 'text'.
+    """
+
+    flattened_config = flatten(config, reducer="dot", enumerate_types=(listconfig.ListConfig,))
+
+    table = dict2mdtable(flattened_config, key="Hyperparameter", val="Value")
+    # and finally, log a text scalar with a table
+    tb_logger.writer.add_text(
+        "hyperparams",
+        table
+    )
+
+
 def setup_exp_logging(config, trainer, optimizers, evaluators):
     """Setup Experiment Tracking logger from Ignite."""
     logger = common.setup_tb_logging(
@@ -132,6 +157,10 @@ def setup_exp_logging(config, trainer, optimizers, evaluators):
         evaluators,
         config.log_every_iters,
     )
+
+    # Log the configuration
+    log_config(config, logger)
+
     return logger
 
 
@@ -160,21 +189,21 @@ def setup_handlers(
     global_step_transform = None
     if to_save_train.get("trainer", None) is not None:
         global_step_transform = global_step_from_engine(to_save_train["trainer"])
-    metric_name = "mIoU_bg"
+    best_metric_name = config.metrics.eval.get("best_metric_name", "accuracy") # Defaults to "accuracy" if not specified
     ckpt_handler_eval = Checkpoint(
         to_save_eval,
         saver,
         filename_prefix="best",
         n_saved=config.n_saved,
         global_step_transform=global_step_transform,
-        score_function=Checkpoint.get_default_score_fn(metric_name),
-        score_name=f"eval_{metric_name}",
+        score_function=Checkpoint.get_default_score_fn(best_metric_name),
+        score_name=f"eval_{best_metric_name}",
     )
     evaluator.add_event_handler(Events.EPOCH_COMPLETED(every=1), ckpt_handler_eval)
 
     # early stopping
     def score_fn(engine: Engine):
-        return engine.state.metrics["mIoU_bg"]
+        return engine.state.metrics[best_metric_name]
 
     es = EarlyStopping(config.patience, score_fn, trainer)
     evaluator.add_event_handler(Events.EPOCH_COMPLETED, es)
