@@ -1,4 +1,4 @@
-from .loss import LossMetric
+from .loss import LossMetric, MonaiLossMetric
 from .segmentation import SegmentationMetrics
 
 from typing import Dict, Callable, Any
@@ -13,7 +13,10 @@ def setup_metrics(config, metrics_name: str = 'eval', loss_fn: Callable | None =
     elif config.metrics[metrics_name].type == 'LossMetric':
         if loss_fn is None or model is None:
             raise ValueError("Loss function and model must be provided for LossMetric.")
-        metric = LossMetric(loss_fn, model=model)
+        if config.model.type == 'monai':
+            metric = MonaiLossMetric(loss_fn, model=model)
+        else:
+            metric = LossMetric(loss_fn, model=model)
     else:
         raise ValueError(f"Metrics type {config.metrics['metrics_name'].type} is not supported. It can be implemented in the metrics directory.")
     
