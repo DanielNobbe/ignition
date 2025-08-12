@@ -9,7 +9,7 @@ from ignite.utils import manual_seed
 
 
 from ignition.datasets import setup_dataset
-from ignition.trainers import setup_evaluator, setup_trainer
+from ignition.engines import setup_evaluator, setup_trainer
 from ignition.data.utils import denormalize
 from ignition.models import setup_model
 from ignition.vis import predictions_gt_images_handler
@@ -19,6 +19,8 @@ from ignition.lr_schedulers import setup_lr_scheduler
 from ignition.optimizers import setup_optimizer
 from ignition.metrics import setup_metrics
 import sys
+
+import monai
 
 import hydra
 from omegaconf import DictConfig
@@ -31,6 +33,7 @@ except ImportError:
 
 
 def run(local_rank: int, config: Any):
+    monai.config.print_config()
     # make a certain seed
     rank = idist.get_rank()
     manual_seed(config.seed + rank)
@@ -45,7 +48,7 @@ def run(local_rank: int, config: Any):
     # load datasets and create dataloaders
     dataset = setup_dataset(config)
     dataloader_train = dataset.get_train_dataloader()
-    dataloader_eval = dataset.get_eval_dataloader()
+    dataloader_eval = dataset.get_val_dataloader()
     le = len(dataloader_train)
 
     # model, optimizer, loss function, device
@@ -53,14 +56,14 @@ def run(local_rank: int, config: Any):
 
     model = idist.auto_model(setup_model(config))
     optimizer = idist.auto_optim(
-        setup_optimizer(model.get_parameters(), config)
+        setup_optimizer(model.parameters(), config)
     )
     loss_fn = setup_loss(config).to(device=device)
     lr_scheduler = setup_lr_scheduler(optimizer, config, le)
 
     # trainer and evaluator
-    trainer = setup_trainer(config, model, optimizer, loss_fn, device, dataset.get_prepare_batch(), setup_metrics(config, 'train', loss_fn, model))
-    evaluator = setup_evaluator(config, model, setup_metrics(config, 'eval'), device, dataset.get_prepare_batch())
+    trainer = setup_trainer(config, model, optimizer, loss_fn, device, dataset, setup_metrics(config, 'train', loss_fn, model))
+    evaluator = setup_evaluator(config, model, setup_metrics(config, 'eval'), device, dataset)
 
     # setup engines logger with python logging
     # print training configurations
@@ -97,27 +100,28 @@ def run(local_rank: int, config: Any):
         # - we plot images with masks of the middle validation batch
         # - once every 3 validations and
         # - at the end of the training
-        def custom_event_filter(_, val_iteration):
-            c1 = val_iteration == len(dataloader_eval) // 2
-            c2 = trainer.state.epoch % 3 == 0
-            c2 |= trainer.state.epoch == config.max_epochs
-            return c1 and c2
+        # def custom_event_filter(_, val_iteration):
+        #     c1 = val_iteration == len(dataloader_eval) // 2
+        #     c2 = trainer.state.epoch % 3 == 0
+        #     c2 |= trainer.state.epoch == config.max_epochs
+        #     return c1 and c2
 
-        # Image denormalization function to plot predictions with images
-        mean = (0.485, 0.456, 0.406)
-        std = (0.229, 0.224, 0.225)
-        img_denormalize = partial(denormalize, mean=mean, std=std)
+        # # Image denormalization function to plot predictions with images
+        # mean = (0.485, 0.456, 0.406)
+        # std = (0.229, 0.224, 0.225)
+        # img_denormalize = partial(denormalize, mean=mean, std=std)
 
-        exp_logger.attach(
-            evaluator,
-            log_handler=predictions_gt_images_handler(
-                img_denormalize_fn=img_denormalize,
-                n_images=15,
-                another_engine=trainer,
-                prefix_tag="validation",
-            ),
-            event_name=Events.ITERATION_COMPLETED(event_filter=custom_event_filter),
-        )
+        # exp_logger.attach(
+        #     evaluator,
+        #     log_handler=predictions_gt_images_handler(
+        #         img_denormalize_fn=img_denormalize,
+        #         n_images=15,
+        #         another_engine=trainer,
+        #         prefix_tag="validation",
+        #     ),
+        #     event_name=Events.ITERATION_COMPLETED(event_filter=custom_event_filter),
+        # )
+        # TODO: Have configurable visualisers
 
 
     # print metrics to the stderr
@@ -136,26 +140,36 @@ def run(local_rank: int, config: Any):
     # for evaluation stats
     @trainer.on(Events.EPOCH_COMPLETED(every=config.eval_every_epochs))
     def _():
-        evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
+        if config.engine_type == 'ignite':
+            evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
+        elif config.engine_type == 'monai':
+            evaluator.run()
         log_metrics(evaluator, "eval")
 
     # let's try run evaluation first as a sanity check
     @trainer.on(Events.STARTED)
     def _():
-        evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
+        if config.engine_type == 'ignite':
+            evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
+        elif config.engine_type == 'monai':
+            evaluator.run()
+            # TODO: Make generic evaluator so we can use the same call?
 
     logger.info("Start training for %d epochs", config.max_epochs)
 
     if rank == 0:
         pbar = ProgressBar()
-        pbar.attach(trainer, output_transform=lambda output: {"train_loss": output["train_loss"]})
+        pbar.attach(trainer)
 
     # setup if done. let's run the training
-    trainer.run(
-        dataloader_train,
-        max_epochs=config.max_epochs,
-        epoch_length=config.train_epoch_length,
-    )
+    if config.engine_type == 'ignite':
+        trainer.run(
+            dataloader_train,
+            max_epochs=config.max_epochs,
+            epoch_length=config.train_epoch_length,
+        )
+    elif config.engine_type == 'monai':
+        trainer.run()
 
     # close logger
     if rank == 0:
