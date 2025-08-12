@@ -29,6 +29,23 @@ def setup_config(config):
     return config
 
 
+def split_dict_at_index(d: dict, index: int) -> tuple[dict, dict]:
+    """Split a dictionary into two parts at the given index."""
+    if not isinstance(d, dict):
+        raise TypeError("Input must be a dictionary.")
+    if not isinstance(index, numbers.Integral):
+        raise TypeError("Index must be an integer.")
+
+    keys = list(d.keys())
+    if index < 0 or index > len(keys):
+        raise IndexError("Index out of range.")
+
+    first_part = {k: d[k] for k in keys[:index]}
+    second_part = {k: d[k] for k in keys[index:]}
+
+    return first_part, second_part
+
+
 def log_metrics(engine: Engine, tag: str) -> None:
     """Log `engine.state.metrics` with given `engine` and `tag`.
 
