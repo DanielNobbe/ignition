@@ -91,7 +91,7 @@ class PairedDataset(ABC):
         raise NotImplementedError("This method should be implemented in a subclass")
     
     @abstractmethod
-    def get_eval_dataloader(self):
+    def get_val_dataloader(self):
         raise NotImplementedError("This method should be implemented in a subclass")
     
     @abstractmethod
