@@ -140,7 +140,7 @@ class VOCSegmentationPairedDataset(PairedDataset):
     def get_train_dataloader(self):
         return self.train_dataloader
     
-    def get_eval_dataloader(self):
+    def get_val_dataloader(self):
         return self.val_dataloader
 
     def get_prepare_batch(self):
