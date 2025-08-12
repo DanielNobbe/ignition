@@ -1,6 +1,6 @@
 seed: 777 # random seed
-batch_size: 48 # train batch size
-eval_batch_size: 32 # evaluation batch size
+batch_size: 2 # train batch size
+eval_batch_size: 4 # evaluation batch size
 num_workers: 10 # number of subprocesses to use for data loading
 max_epochs: 100 # number of maximum epochs
 use_amp: false # use AMP (Automatic Mixed Precision)
@@ -16,34 +16,113 @@ log_every_iters: 10
 lr: 0.02 # learning rate
 accumulation_steps: 1 # parameter for gradient accumulation
 eval_every_epochs: 10 # evaluate every n epochs
-num_classes: 21 # number of classes for segmentation
+num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
+# check how to ignore background? And if that needs to count towards clas no?
 backend: gloo
 task: segmentation # task type
+engine_type: monai # or monai or ignite
+roi_size: [224, 224, 64] # native roi size for model
+inferer:  # Use sliding window inference
+  # set to null to disable sliding window inference
+  _target_: monai.inferers.SlidingWindowInferer
+  roi_size: ${roi_size} # roi size for inference
+  sw_batch_size: ${eval_batch_size} # sliding window batch size
+  overlap: 0.25
+  mode: 'constant' # blending mode, can be 'constant' or 'gaussian'
+  # for gaussian, can specify sigma_scale
+  sigma_scale: 0.125 # scale for gaussian blending, only used if mode is 'gaussian'
+  progress: true # show progress bar during inference
+  # device: 'cuda' # device to use for inference, can be 'cpu' or 'cuda' (or mps?)
+  
 model:
-  type: torchvision # model type
-  name: deeplabv3_mobilenet_v3_large # model name
-  pretrained: true # use pretrained weights
+  type: monai # model type, torchvision or monai
+  # name: deeplabv3_mobilenet_v3_large # model name
+  # pretrained: true # use pretrained weights
+  _target_: monai.networks.nets.SegResNet
+  spatial_dims: 3 # number of spatial dimensions, 2 for 2D, 3 for 3D
+  init_filters: 16 # initial number of filters
+  in_channels: 1 # number of input channels, 1 for grayscale
+  out_channels: ${num_classes} # number of output channels, should match num_classes -- is it including the background?
+  dropout_prob: 0.2 # dropout probability
 dataset:
-  type: VOCSegmentationPairedDataset # dataset type
-  root: /Users/daniel/data/ # dataset root path
-  download: false # download the dataset if not present
-  subset_size: 0.1 # subset size for the dataset, 0.1 means 10% of the data. If set to null, the full dataset is used
-  train:
-    img_size: 480 # image size for training
-  val:
-    img_size: 513 # image size for validation
-  # TODO: These could also be part of transform settings
-  mean: [0.485, 0.456, 0.406]
-  std: [0.229, 0.224, 0.225] # normalization values for the dataset
+  type: MonaiSegmentationFolder # dataset type
+  images_dir: /Users/daniel/data/medicaldecathlon/Task03_Liver/imagesTr # images path
+  labels_dir: /Users/daniel/data/medicaldecathlon/Task03_Liver/labelsTr # labels path
+  subset_size: 0.05
+  val_size: 0.2
+  cache_num: 20 # number of samples to cache in memory
+  # download: false # download the dataset if not present
+  # subset_size: 0.1 # subset size for the dataset, 0.1 means 10% of the data. If set to null, the full dataset is used
+  # train:
+  #   img_size: 480 # image size for training
+  # val:
+  #   img_size: 513 # image size for validation
+  # # TODO: These could also be part of transform settings
+  # mean: [0.485, 0.456, 0.406]
+  # std: [0.229, 0.224, 0.225] # normalization values for the dataset
   # datasets:
   #   train:
   #     type: VOCSegmentation # dataset type, does not matter if paired dataset type is specified
   #     root: /Users/daniel/data/VOCdevkit # dataset root path
   #     download: true # download the dataset if not present
+  transforms:  # only for monai datasets?
+    train:  # NOTE: Order matters! Settings are based on: https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/brats_segmentation_3d.ipynb
+      # - type: ScaleIntensity
+      - type: EnsureChannelFirst
+        channel_dim: no_channel  # to automatically add channel dimension if not present
+      - type: Orientation
+        axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
+      # - type: Spacing
+      #   pixdim: [1.0, 1.0, 1.0] # pixel dimensions for the image
+      #   mode: 'bilinear' # interpolation mode for resizing, can also be both 'nearest' and 'bilinear'
+      #   align_corners: null # align corners for the interpolation, set to null for default behavior
+      - type: RandSpatialCrop
+        roi_size: [224, 224, 64] # crop size for training
+        random_size: false # use fixed size for cropping
+        rabdom_center: true # use random center for cropping
+      - type: RandFlip
+        prob: 0.5 # probability of flipping the image
+        spatial_axis: 0 # axes to flip the image
+      - type: RandFlip
+        prob: 0.5 # probability of flipping the image
+        spatial_axis: 1 # axes to flip the image
+      - type: RandFlip
+        prob: 0.5 # probability of flipping the image
+        spatial_axis: 2 # axes to flip the image
+      - type: NormalizeIntensity
+        nonzero: true # normalize only non-zero values
+        channel_wise: true # normalize each channel separately
+        subtrahend: null # subtrahend for normalization
+        divisor: null # divisor for normalization
+      - type: RandScaleIntensity
+        prob: 1.0 # probability of scaling the intensity
+        # 0.1 means beween 0.9 and 1.1
+        factors: 0.1 # scaling factors for the intensity
+      - type: RandShiftIntensity
+        prob: 1.0 # probability of shifting the intensity
+        # 0.1 means beween -0.1 and 0.1
+        offsets: 0.1 # shifting offsets for the intensity
+    val:  # validation transforms
+      - type: EnsureChannelFirst  # not actually necessary for single-modal data
+        channel_dim: no_channel  # to automatically add channel dimension if not present
+      - type: Orientation
+        axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
+      # - type: Spacing 
+      #   pixdim: [1.0, 1.0, 1.0] # pixel dimensions for the image
+      #   mode: 'bilinear' # interpolation mode for resizing, can also be both 'nearest' and 'bilinear'
+      #   align_corners: null # align corners for the interpolation, set to null for default behavior
+      - type: NormalizeIntensity
+        nonzero: true # normalize only non-zero values
+        channel_wise: true # normalize each channel separately
+        subtrahend: null # subtrahend for normalization
+        divisor: null # divisor for normalization
 loss:
-  type: CrossEntropyLoss # loss type
-  ignore_index: 255 # index to ignore in the loss calculation. Use -100 for default PyTorch behavior
-  label_smoothing: 0.0
+  type: monai # loss type
+  _target_: monai.losses.DiceLoss
+  squared_pred: true
+  to_onehot_y: true  # target is already one-hot encoded
+  sigmoid: true
+  include_background: true # include background class in the loss calculation
 lr_scheduler:
   type: PolynomialLR # learning rate scheduler type
   power: 0.8 # power for the polynomial decay
@@ -57,25 +136,8 @@ metrics:
   eval:
     type: SegmentationMetrics # evaluation metrics type
     iou: true # use IoU metric
-    mIoU: true # use mean IoU metric
+    miou: true # use mean IoU metric
     background_index: 0 # ignore background class in IoU calculation, set to negative/null to disable
     best_metric_name: mIoU # name of the best metric to track for early stopping and checkpointing
   train:
     type: LossMetric # training metrics type
-list_config:
-  - name: "mIoU"
-    type: "SegmentationMetrics"
-    iou: true
-    mIoU: true
-    background_index: 0
-    best_metric_name: mIoU
-  - name: "loss"
-    type: "LossMetric"
-    ignore_index: 255 # index to ignore in the loss calculation. Use -100 for default PyTorch behavior
-    label_smoothing: 0.0
-  - name: "accuracy"
-    type: "AccuracyMetric"
-    top_k: 1 # top-k accuracy, set to 1 for standard accuracy
-  - name: "precision"
-    type: "PrecisionMetric"
-    average: "macro" # macro, micro, or weighted average for precision
