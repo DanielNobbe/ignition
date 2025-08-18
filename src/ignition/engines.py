@@ -4,7 +4,7 @@ import ignite.distributed as idist
 import torch
 from ignite.engine import DeterministicEngine, Engine, Events, create_supervised_trainer, create_supervised_evaluator
 from ignite.metrics import Metric
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import GradScaler
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DistributedSampler, Sampler
@@ -55,10 +55,6 @@ def setup_trainer(
             # TODO: Add option to use slidingwindow inferer during training
             key_metric, other_metrics = split_dict_at_index(metrics, 1)
 
-            # NOTE: it is odd, the metrics entered here should be ignite metrics,
-            # but the MONAI metrics do not inherit from ignite.metrics.Metric
-            # --> right, this doesn't actually work
-
             trainer = SupervisedTrainer(
                 device=device,
                 max_epochs=config.max_epochs,
@@ -66,10 +62,7 @@ def setup_trainer(
                 network=model,
                 optimizer=optimizer,
                 loss_function=loss_fn,
-                # prepare_batch=dataset.get_prepare_batch(),
                 non_blocking=True,
-                # model_transform=model.get_model_transform(),
-                # output_transform=model.get_train_output_transform()
                 key_train_metric=key_metric,
                 additional_metrics=other_metrics,
             )
@@ -111,14 +104,10 @@ def setup_evaluator(
                 val_data_loader=dataset.get_val_dataloader(),
                 network=model,
                 inferer=instantiate(config.inferer) if config.get('inferer') else None,
-                postprocessing=instantiate(config.post_transforms[name]) if config.post_transforms.get(name) else None,
-                # prepare_batch=dataset.get_prepare_batch(),
+                postprocessing=instantiate(config.post_transforms.get(name)),
                 non_blocking=True,
                 key_val_metric=key_metric,
                 additional_metrics=other_metrics,
             )
-    # TODO: maybe we need to use the postprocessing arg for the transform?
-
-
 
     return evaluator

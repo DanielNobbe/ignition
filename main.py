@@ -12,7 +12,6 @@ from ignition.datasets import setup_dataset
 from ignition.engines import setup_evaluator, setup_trainer
 from ignition.data.utils import denormalize
 from ignition.models import setup_model
-from ignition.vis import predictions_gt_images_handler
 from ignition.utils import *
 from ignition.losses import setup_loss
 from ignition.lr_schedulers import setup_lr_scheduler
@@ -33,26 +32,6 @@ try:
     from torch.optim.lr_scheduler import LRScheduler as PyTorchLRScheduler
 except ImportError:
     from torch.optim.lr_scheduler import _LRScheduler as PyTorchLRScheduler
-
-
-"""
-If we want to purely run MONAI models, we need the following steps:
-
-- Create dataset and dataloaders (incl transforms)
-- Create model, optimizer, loss function, device
-- Create learning rate scheduler
-
-
-- Create engines (trainer, evaluator)
-    - Including 'handlers' for logging, checkpointing
-    - Include key and additional metrics (can be based on ignite metric with a handler)
-    - Optionally add 'post transforms' for model outputs
-    - Optionally add inferer (sliding window)
-
-- Create experiment logger (tensorboard, wandb, etc.)  --> or is this done in handlers?
-
-"""
-
 
 
 def run(local_rank: int, config: Any):
@@ -84,7 +63,6 @@ def run(local_rank: int, config: Any):
 
     # model, optimizer, loss function, device
     device = idist.device()
-
     model = idist.auto_model(setup_model(config))
     optimizer = idist.auto_optim(
         setup_optimizer(model.parameters(), config)
@@ -97,33 +75,9 @@ def run(local_rank: int, config: Any):
     validator = setup_evaluator(config, model, setup_metrics(config, 'val', loss_fn, model), device, dataset)
 
     # setup engines logger with python logging
-    # print training configurations
     logger = setup_logging(config)
     logger.info("Configuration: \n%s", pformat(config))
     trainer.logger = validator.logger = logger
-
-    # if isinstance(lr_scheduler, PyTorchLRScheduler):
-    #     trainer.add_event_handler(
-    #         Events.ITERATION_COMPLETED,
-    #         lambda engine: cast(PyTorchLRScheduler, lr_scheduler).step(),
-    #     )
-    # elif isinstance(lr_scheduler, LRScheduler):
-    #     trainer.add_event_handler(Events.ITERATION_COMPLETED, lr_scheduler)
-    # else:
-    #     trainer.add_event_handler(Events.ITERATION_STARTED, lr_scheduler)
-
-    # setup ignite handlers
-    to_save_train = {
-        "model": model,
-        "optimizer": optimizer,
-        "trainer": trainer,
-        "lr_scheduler": lr_scheduler,
-    }
-    to_save_eval = {"model": model}
-    # ckpt_handler_train, ckpt_handler_eval = setup_handlers(trainer, evaluator, config, to_save_train, to_save_eval)
-
-    # writer = setup_tensorboard_writer(config, trainer, optimizer, evaluator)
-    # TODO: May be better to use a separate function to define the tensorboard loggers and attach them
 
     setup_handlers(
         config,
@@ -134,75 +88,7 @@ def run(local_rank: int, config: Any):
         lr_scheduler=lr_scheduler
     )
 
-    # experiment tracking
-    # if rank == 0:
-    #     exp_logger = setup_exp_logging(config, trainer, optimizer, evaluator)
-
-        # Log validation predictions as images
-        # We define a custom event filter to log less frequently the images (to reduce storage size)
-        # - we plot images with masks of the middle validation batch
-        # - once every 3 validations and
-        # - at the end of the training
-        # def custom_event_filter(_, val_iteration):
-        #     c1 = val_iteration == len(dataloader_eval) // 2
-        #     c2 = trainer.state.epoch % 3 == 0
-        #     c2 |= trainer.state.epoch == config.max_epochs
-        #     return c1 and c2
-
-        # # Image denormalization function to plot predictions with images
-        # mean = (0.485, 0.456, 0.406)
-        # std = (0.229, 0.224, 0.225)
-        # img_denormalize = partial(denormalize, mean=mean, std=std)
-
-        # exp_logger.attach(
-        #     evaluator,
-        #     log_handler=predictions_gt_images_handler(
-        #         img_denormalize_fn=img_denormalize,
-        #         n_images=15,
-        #         another_engine=trainer,
-        #         prefix_tag="validation",
-        #     ),
-        #     event_name=Events.ITERATION_COMPLETED(event_filter=custom_event_filter),
-        # )
-        # TODO: Have configurable visualisers
-
-
-    # print metrics to the stderr
-    # with `add_event_handler` API
-    # for training stats
-    # trainer.add_event_handler(
-    #     Events.ITERATION_COMPLETED(every=config.log_every_iters),
-    #     log_metrics,
-    #     tag="train",
-    # )
-
-    # run evaluation at every training epoch end
-    # with shortcut `on` decorator API and
-    # print metrics to the stderr
-    # again with `add_event_handler` API
-    # for evaluation stats
-    # @trainer.on(Events.EPOCH_COMPLETED(every=config.eval_every_epochs))
-    # def _():
-    #     if config.engine_type == 'ignite':
-    #         evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
-    #     elif config.engine_type == 'monai':
-    #         evaluator.run()
-    #     log_metrics(evaluator, "eval")
-
-    # let's try run evaluation first as a sanity check
-    # @trainer.on(Events.STARTED)
-    # def _():
-    #     if config.engine_type == 'ignite':
-    #         evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
-    #     elif config.engine_type == 'monai':
-    #         evaluator.run()
-    #         # TODO: Make generic evaluator so we can use the same call?
-
     logger.info("Start training for %d epochs", config.max_epochs)
-
-    # if rank == 0:
-    #     pbar = ProgressBar()
-    #     pbar.attach(trainer)
 
     # setup if done. let's run the training
     if config.engine_type == 'ignite':
@@ -213,23 +99,8 @@ def run(local_rank: int, config: Any):
         )
     elif config.engine_type == 'monai':
         trainer.run()
-
-    # close logger
-    # if rank == 0:
-    #     exp_logger.close()
-
-    # show last checkpoint names
-    # TODO: This would be nice to log still
-    # logger.info(
-    #     "Last training checkpoint name - %s",
-    #     ckpt_handler_train.last_checkpoint,
-    # )
-
-    # logger.info(
-    #     "Last evaluation checkpoint name - %s",
-    #     ckpt_handler_eval.last_checkpoint,
-    # )
-
+    else:
+        raise ValueError(f"Unknown engine type: {config.engine_type}. Supported types are 'ignite' and 'monai'.")
 
 # main entrypoint
 @hydra.main(version_base=None, config_path=".", config_name="config")

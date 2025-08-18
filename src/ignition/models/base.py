@@ -6,6 +6,13 @@ from typing import Callable
 from abc import ABC, abstractmethod
 
 class IgnitionModel(nn.Module, ABC):
+    """Base class for models in Ignition.
+    Note that as of now, this class is used for generic models,
+
+    Ignition also supports loading MONAI models directly from the config.
+    This class can be used for custom models, but MONAI-style models
+    can also be loaded directly from the config.
+    """
     # name might conflict with other "model", e.g. data model
     def __init__(self, config):
         super().__init__()
@@ -25,8 +32,6 @@ class IgnitionModel(nn.Module, ABC):
         """Returns the parameters of the model, for initializing the optimizer."""
         return self.get_model().parameters()
 
-    # NOTE: Could also specify these functions as properties, which would allow for us to check their inputs/outputs. This would not allow to use the config to set the function, but the function would still have access to the config. In the end it comes down to a difference in memory, but that's not a big deal.
-    # only the get_model_transform does not always have the same input signature. So for uniformity, we keep all as returning a method.
     @abstractmethod
     def get_model_transform(self) -> Callable:
         """Returns a function that transforms the model output to the format expected by Ignite."""

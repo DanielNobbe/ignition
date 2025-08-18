@@ -1,5 +1,5 @@
 from .loss import LossMetric, MonaiLossMetric
-from .segmentation import SegmentationMetrics
+from .utils import SegmentationMetrics
 
 from typing import Dict, Callable, Any
 from torch.nn import Module
@@ -37,29 +37,6 @@ def instantiate_metric(
     else:
         # Otherwise, instantiate it without any parameters
         return instantiate(metric_config)
-    
-
-# def setup_metrics(
-#     config: DictConfig,
-#     metrics_name: str = 'val',
-#     loss_fn: Callable | None = None,
-#     model: Module | None = None
-# ) -> Dict[str, Metric]:
-#     """
-#     Setup metrics based on the configuration.
-    
-#     Args:
-#         config (DictConfig): Configuration object.
-#         metrics_name (str): Name of the metrics configuration to use.
-#         loss_fn (Callable, optional): Loss function for loss metrics.
-#         model (Module, optional): Model for loss metrics.
-
-#     Returns:
-#         Dict[str, Metric]: Dictionary of configured metrics.
-#     """
-#     return setup_metrics(config, metrics_name, loss_fn, model)
-# )
-
 
 def setup_metrics(config, metrics_name: str = 'val', loss_fn: Callable | None = None, model: Module | None = None, trainer: Engine | None = None) -> Dict[str, Metric]:
     """Setup metrics based on the configuration."""
@@ -83,17 +60,3 @@ def setup_metrics(config, metrics_name: str = 'val', loss_fn: Callable | None = 
         )
 
     return metrics
-    
-    if config.metrics[metrics_name].type == 'SegmentationMetrics':
-        metric = SegmentationMetrics(config, metrics_name)
-    elif config.metrics[metrics_name].type == 'LossMetric':
-        if loss_fn is None or model is None:
-            raise ValueError("Loss function and model must be provided for LossMetric.")
-        if config.model.type == 'monai':
-            metric = MonaiLossMetric(loss_fn, model=model)
-        else:
-            metric = LossMetric(loss_fn, model=model)
-    else:
-        raise ValueError(f"Metrics type {config.metrics['metrics_name'].type} is not supported. It can be implemented in the metrics directory.")
-    
-    return metric.get_metrics()

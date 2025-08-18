@@ -146,17 +146,6 @@ def setup_logging(config: Any) -> Logger:
     )
     return logger
 
-
-
-# def setup_exp_logging(config, trainer, optimizers, evaluators):
-#     """Setup Experiment Tracking logger from Ignite."""
-
-#     # Log the configuration
-#     # log_config(config, logger)
-
-#     return logger
-
-
 def get_key_metric_value(engine):
     return engine.state.metrics.get(engine.key_metric_name, None)
 
@@ -168,56 +157,3 @@ def get_epoch_function(engine: Engine) -> int:
         return engine.state.epoch
     
     return get_epoch
-
-
-# def setup_handlers(
-#     trainer: Engine,
-#     evaluator: Engine,
-#     config: Any,
-#     to_save_train: Optional[dict] = None,
-#     to_save_eval: Optional[dict] = None,
-# ):
-#     """Setup Ignite handlers."""
-
-#     ckpt_handler_train = ckpt_handler_eval = None
-#     # checkpointing
-#     saver = DiskSaver(config.output_dir / "checkpoints", require_empty=False)
-#     ckpt_handler_train = Checkpoint(
-#         to_save_train,
-#         saver,
-#         filename_prefix=config.filename_prefix,
-#         n_saved=config.n_saved,
-#     )
-#     trainer.add_event_handler(
-#         Events.ITERATION_COMPLETED(every=config.save_every_iters),
-#         ckpt_handler_train,
-#     )
-#     global_step_transform = None
-#     if to_save_train.get("trainer", None) is not None:
-#         global_step_transform = global_step_from_engine(to_save_train["trainer"])
-#     best_metric_name = config.metrics.eval.get("best_metric_name", "accuracy") # Defaults to "accuracy" if not specified
-#     ckpt_handler_eval = Checkpoint(
-#         to_save_eval,
-#         saver,
-#         filename_prefix="best",
-#         n_saved=config.n_saved,
-#         global_step_transform=global_step_transform,
-#         score_function=Checkpoint.get_default_score_fn(best_metric_name),
-#         score_name=f"eval_{best_metric_name}",
-#     )
-#     evaluator.add_event_handler(Events.EPOCH_COMPLETED(every=1), ckpt_handler_eval)
-
-#     # early stopping
-#     def score_fn(engine: Engine):
-#         return engine.state.metrics[best_metric_name]
-
-#     es = EarlyStopping(config.patience, score_fn, trainer)
-#     evaluator.add_event_handler(Events.EPOCH_COMPLETED, es)
-#     # terminate on nan
-#     trainer.add_event_handler(Events.ITERATION_COMPLETED, TerminateOnNan())
-#     return ckpt_handler_train, ckpt_handler_eval
-
-
-
-
-    

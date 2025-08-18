@@ -6,9 +6,6 @@ from ignite.utils import convert_tensor
 
 
 class TorchVisionSegmentationModel(IgnitionModel):
-    # NOTE: SHould this be a nn.Module? Would allow us to use
-    # it as a regular model
-    # It is now, but this may affect how we can save it?
     # Maybe better to use the get_model method to return the nn.Module wherever it's needed?
     def __init__(self, config):
         super().__init__(config)

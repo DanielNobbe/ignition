@@ -179,6 +179,15 @@ metrics:
   train_key_metric_name: ${metrics.train[0]._key_} # name of the key metric for training, used for logging
 handlers:
   train:
+    - _target_: monai.handlers.CheckpointSaver
+      _convert_: partial
+      _requires_: [save_dict, save_dir]
+      save_final: true
+      final_filename: "final_model.pth"
+      save_key_metric: false
+      epoch_level: true
+      save_interval: 5
+      n_saved: 5
     - _target_:  monai.handlers.LrScheduleHandler
       _requires_: lr_scheduler
       print_lr: true
@@ -197,15 +206,6 @@ handlers:
       iteration_log: true
       epoch_log: true
       tag_name: "Train Loss"
-    - _target_: monai.handlers.CheckpointSaver
-      _convert_: partial
-      _requires_: [save_dict, save_dir]
-      save_final: true
-      final_filename: "final_model.pth"
-      save_key_metric: false
-      epoch_level: true
-      save_interval: 5
-      n_saved: 5
     - _target_: ignite.handlers.ProgressBar
       desc: "Training"
     # NOTE: ignite also offers a terminate on nan handler, could be interesting

@@ -176,70 +176,12 @@ def setup_train_handlers(
         # 'global_epoch_transform': get_epoch_function(trainer)  # not neded here, since we will use the trainer
     }
 
+    # TODO: Which of these shoold run only on rank 0?
     for handler_config in config.handlers.get('train', []):
         handler = instantiate_handler(handler_config, **instantiate_kwargs)
         handler.attach(trainer)
         # Does the handler stay in scope from here?
 
-    # # TODO: Which of these shoold run only on rank 0?
-    # lr_schedule_handler = LrScheduleHandler(
-    #     lr_scheduler=lr_scheduler,
-    #     print_lr=True,
-    #     epoch_level=False
-    #     )  # no need to specify step_transform, since most lr schedulers only rely on the parameter gradients
-    
-    # lr_schedule_handler.attach(trainer)
-
-    # validation_handler = ValidationHandler(
-    #     interval=5,  # every 5 epochs
-    #     validator=validator,
-    #     epoch_level=True,  # validation is done at the end of each epoch
-    #     exec_at_start=True,  # run validation at the start of training
-    # )
-    # validation_handler.attach(trainer)
-
-    # stats_handler = StatsHandler(
-    #     iteration_log=True,
-    #     epoch_log=False,
-    #     tag_name="train loss"
-    # )
-    # # use default iteration_print_logger - it prints the loss
-    # # not sure if the output_transform is correct by default
-
-    # stats_handler.attach(trainer)
-
-    # # This should just add an additional logging for the loss?
-    # tensorboard_stats_handler = TensorBoardStatsHandler(
-    #     summary_writer=writer,
-    #     iteration_log=True,
-    #     epoch_log=True,
-    #     tag_name="train loss"
-    # )
-    # tensorboard_stats_handler.attach(trainer)
-
-    # # checkpoint saver
-    # # TODO: Make folder with logs + checkpoints
-    # # TODO: Make this the first handler to save on exception
-    # checkpoint_saver = CheckpointSaver(
-    #     save_dir=os.path.join(writer.get_logdir(), "checkpoints"),
-    #     save_dict={
-    #         "model": model,
-    #         "optimizer": optimizer,
-    #         "trainer": trainer,
-    #         # "validator": validator,
-    #         "lr_scheduler": lr_scheduler,
-    #     },
-    #     save_final=True,
-    #     final_filename="final_checkpoint.pth",
-    #     save_key_metric=False,
-    #     epoch_level=True,
-    #     save_interval=1,  # save every epoch
-    #     n_saved=5,  # keep last 5 checkpoints
-    # )
-    # checkpoint_saver.attach(trainer)
-
-    # pbar = ProgressBar(persist=True, desc="Training Progress")
-    # pbar.attach(trainer)
 
 
 def setup_validation_handlers(
@@ -257,63 +199,9 @@ def setup_validation_handlers(
         'save_dict': {
             "model": model,
         },
-        # **({'global_step_transform': global_step_from_engine(trainer)} if trainer is not None else {})
         'global_epoch_transform': get_epoch_function(trainer),
     }
 
     for handler_config in config.handlers.get('validation', []):
         handler = instantiate_handler(handler_config, **instantiate_kwargs)
         handler.attach(validator)
-
-    # # this is optional! We should already use the checkpointsaver to save the best model
-    # early_stop_handler = EarlyStopHandler(
-    #     patience=5,
-    #     score_function=lambda engine: engine.state.metrics[engine.state.key_metric_name],
-    #     trainer=trainer,
-    #     min_delta=0.0001,
-    #     cumulative_delta=False,
-    #     epoch_level=True,
-    # )
-    # early_stop_handler.attach(validator)
-
-
-    checkpoint_saver = CheckpointSaver(
-        save_dir=os.path.join(writer.get_logdir(), "checkpoints"),
-        save_dict={
-            "model": model,
-        },
-        file_prefix="best_model",
-        save_final=False,
-        save_key_metric=True,
-        epoch_level=True,
-        save_interval=1,  # save every epoch
-        key_metric_n_saved=1,  # keep only the best model
-        key_metric_greater_or_equal=True,  # if two have same metric, save the last one
-    )
-    # checkpoint_saver.attach(validator)
-
-    # stats_handler = StatsHandler(
-    #     iteration_log=False,
-    #     epoch_log=True,
-    #     tag_name="validation"
-    # )  # TODO: Check if this prints all validation metrics?
-    # stats_handler.attach(validator)
-
-    # tensorboard_stats_handler = TensorBoardStatsHandler(
-    #     summary_writer=writer,
-    #     iteration_log=False,
-    #     epoch_log=True,
-    #     tag_name="validation",
-    #     # state_attributes=["metrics"]
-    # )  # TODO: Check if this saves all validation metrics
-    # tensorboard_stats_handler.attach(validator)
-
-    # tensorboard_image_handler = TensorBoardImageHandler(
-    #     summary_writer=writer,
-    #     epoch_level=True,
-    #     interval=1,
-    #     index=0,
-    #     batch_transform=from_engine(['image', 'label']),
-    #     output_transform=from_engine(['pred']),
-    # )
-    # tensorboard_image_handler.attach(validator)
