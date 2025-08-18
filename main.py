@@ -26,6 +26,8 @@ import monai
 import hydra
 from omegaconf import DictConfig
 
+from warnings import warn
+
 
 try:
     from torch.optim.lr_scheduler import LRScheduler as PyTorchLRScheduler
@@ -54,6 +56,14 @@ If we want to purely run MONAI models, we need the following steps:
 
 
 def run(local_rank: int, config: Any):
+
+    world_size = idist.get_world_size()
+    if world_size > 1:
+        warn(
+            "Running this training script on multiple GPUs is not fully supported. To add support, look into adding rank-conditional logic for the handlers, metrics and dataloaders. And verify that all LR schedulers and optimizers support distributed training, e.g. by using `ignite.distributed.auto_optim`."
+        )
+
+
     monai.config.print_config()
     # make a certain seed
     rank = idist.get_rank()
