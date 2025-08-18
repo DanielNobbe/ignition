@@ -96,6 +96,8 @@ class SegmentationFolder(PairedDataset):
             cache_num=self.config.dataset.get('cache_num', 1),  # number of samples to cache in memory
         )
 
+        print(f"Loaded {len(self.train_dataset)} training samples and {len(self.val_dataset)} validation samples.")
+
         # TODO: Add train and val transforms
 
         # NOTE: MONAI training systems often use sliding window inference

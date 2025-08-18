@@ -6,6 +6,7 @@ from typing import Any, Mapping, Optional, Union
 
 import ignite.distributed as idist
 import torch
+from torch.utils.tensorboard import SummaryWriter
 from ignite.contrib.engines import common
 from ignite.contrib.handlers.tensorboard_logger import OutputHandler
 
@@ -17,8 +18,11 @@ from ignite.handlers.terminate_on_nan import TerminateOnNan
 from ignite.utils import setup_logger
 from omegaconf import OmegaConf, listconfig
 
-from flatten_dict import flatten
 import numbers
+
+from logging import getLogger
+
+printer = getLogger(__name__)
 
 
 def setup_config(config):
@@ -107,7 +111,7 @@ def setup_output_dir(config: Any, rank: int) -> Path:
     output_dir = config.output_dir
     if rank == 0:
         now = datetime.now().strftime("%Y%m%d-%H%M%S")
-        name = f"{now}-backend-{config.backend}-lr-{config.lr}"
+        name = f"{now}-backend-{config.backend}"
         path = Path(config.output_dir, name)
         path.mkdir(parents=True, exist_ok=True)
         output_dir = path.as_posix()
@@ -143,90 +147,75 @@ def setup_logging(config: Any) -> Logger:
     return logger
 
 
-def dict2mdtable(d, key='Name', val='Value'):
-    rows = [f'| {key} | {val} |']
-    rows += ['|--|--|']
-    rows += [f'| {k} | {v} |' for k, v in d.items()]
-    return "  \n".join(rows)
+
+# def setup_exp_logging(config, trainer, optimizers, evaluators):
+#     """Setup Experiment Tracking logger from Ignite."""
+
+#     # Log the configuration
+#     # log_config(config, logger)
+
+#     return logger
 
 
-def log_config(config, tb_logger):
-    # Note sure how to type annotate the logger here
-    """Log configuration to the logger, under 'text'.
-    """
-
-    flattened_config = flatten(config, reducer="dot", enumerate_types=(listconfig.ListConfig,))
-
-    table = dict2mdtable(flattened_config, key="Hyperparameter", val="Value")
-    # and finally, log a text scalar with a table
-    tb_logger.writer.add_text(
-        "hyperparams",
-        table
-    )
+def get_key_metric_value(engine):
+    return engine.state.metrics.get(engine.key_metric_name, None)
 
 
-def setup_exp_logging(config, trainer, optimizers, evaluators):
-    """Setup Experiment Tracking logger from Ignite."""
-    logger = common.setup_tb_logging(
-        config.output_dir,
-        trainer,
-        optimizers,
-        evaluators,
-        config.log_every_iters,
-    )
-
-    # Log the configuration
-    log_config(config, logger)
-
-    return logger
+def get_epoch_function(engine: Engine) -> int:
+    """Get the current epoch number from the engine state."""
+    
+    def get_epoch(*args, **kwargs):
+        return engine.state.epoch
+    
+    return get_epoch
 
 
-def setup_handlers(
-    trainer: Engine,
-    evaluator: Engine,
-    config: Any,
-    to_save_train: Optional[dict] = None,
-    to_save_eval: Optional[dict] = None,
-):
-    """Setup Ignite handlers."""
+# def setup_handlers(
+#     trainer: Engine,
+#     evaluator: Engine,
+#     config: Any,
+#     to_save_train: Optional[dict] = None,
+#     to_save_eval: Optional[dict] = None,
+# ):
+#     """Setup Ignite handlers."""
 
-    ckpt_handler_train = ckpt_handler_eval = None
-    # checkpointing
-    saver = DiskSaver(config.output_dir / "checkpoints", require_empty=False)
-    ckpt_handler_train = Checkpoint(
-        to_save_train,
-        saver,
-        filename_prefix=config.filename_prefix,
-        n_saved=config.n_saved,
-    )
-    trainer.add_event_handler(
-        Events.ITERATION_COMPLETED(every=config.save_every_iters),
-        ckpt_handler_train,
-    )
-    global_step_transform = None
-    if to_save_train.get("trainer", None) is not None:
-        global_step_transform = global_step_from_engine(to_save_train["trainer"])
-    best_metric_name = config.metrics.eval.get("best_metric_name", "accuracy") # Defaults to "accuracy" if not specified
-    ckpt_handler_eval = Checkpoint(
-        to_save_eval,
-        saver,
-        filename_prefix="best",
-        n_saved=config.n_saved,
-        global_step_transform=global_step_transform,
-        score_function=Checkpoint.get_default_score_fn(best_metric_name),
-        score_name=f"eval_{best_metric_name}",
-    )
-    evaluator.add_event_handler(Events.EPOCH_COMPLETED(every=1), ckpt_handler_eval)
+#     ckpt_handler_train = ckpt_handler_eval = None
+#     # checkpointing
+#     saver = DiskSaver(config.output_dir / "checkpoints", require_empty=False)
+#     ckpt_handler_train = Checkpoint(
+#         to_save_train,
+#         saver,
+#         filename_prefix=config.filename_prefix,
+#         n_saved=config.n_saved,
+#     )
+#     trainer.add_event_handler(
+#         Events.ITERATION_COMPLETED(every=config.save_every_iters),
+#         ckpt_handler_train,
+#     )
+#     global_step_transform = None
+#     if to_save_train.get("trainer", None) is not None:
+#         global_step_transform = global_step_from_engine(to_save_train["trainer"])
+#     best_metric_name = config.metrics.eval.get("best_metric_name", "accuracy") # Defaults to "accuracy" if not specified
+#     ckpt_handler_eval = Checkpoint(
+#         to_save_eval,
+#         saver,
+#         filename_prefix="best",
+#         n_saved=config.n_saved,
+#         global_step_transform=global_step_transform,
+#         score_function=Checkpoint.get_default_score_fn(best_metric_name),
+#         score_name=f"eval_{best_metric_name}",
+#     )
+#     evaluator.add_event_handler(Events.EPOCH_COMPLETED(every=1), ckpt_handler_eval)
 
-    # early stopping
-    def score_fn(engine: Engine):
-        return engine.state.metrics[best_metric_name]
+#     # early stopping
+#     def score_fn(engine: Engine):
+#         return engine.state.metrics[best_metric_name]
 
-    es = EarlyStopping(config.patience, score_fn, trainer)
-    evaluator.add_event_handler(Events.EPOCH_COMPLETED, es)
-    # terminate on nan
-    trainer.add_event_handler(Events.ITERATION_COMPLETED, TerminateOnNan())
-    return ckpt_handler_train, ckpt_handler_eval
+#     es = EarlyStopping(config.patience, score_fn, trainer)
+#     evaluator.add_event_handler(Events.EPOCH_COMPLETED, es)
+#     # terminate on nan
+#     trainer.add_event_handler(Events.ITERATION_COMPLETED, TerminateOnNan())
+#     return ckpt_handler_train, ckpt_handler_eval
 
 
 

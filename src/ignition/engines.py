@@ -84,6 +84,7 @@ def setup_evaluator(
     metrics: Dict[str, Metric],
     device: Union[str, torch.device],
     dataset: PairedDataset,
+    name: str = "val"
 ) -> Engine:
 
 # TODO: Move metrics declaration into here?
@@ -103,12 +104,14 @@ def setup_evaluator(
         case 'monai':
 
             key_metric, other_metrics = split_dict_at_index(metrics, 1)
+            # relies on the fact that dicts are ordered in Python 3.7+
 
             evaluator = SupervisedEvaluator(
                 device=device,
                 val_data_loader=dataset.get_val_dataloader(),
                 network=model,
                 inferer=instantiate(config.inferer) if config.get('inferer') else None,
+                postprocessing=instantiate(config.post_transforms[name]) if config.post_transforms.get(name) else None,
                 # prepare_batch=dataset.get_prepare_batch(),
                 non_blocking=True,
                 key_val_metric=key_metric,

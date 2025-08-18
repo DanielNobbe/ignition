@@ -18,6 +18,7 @@ from ignition.losses import setup_loss
 from ignition.lr_schedulers import setup_lr_scheduler
 from ignition.optimizers import setup_optimizer
 from ignition.metrics import setup_metrics
+from ignition.handlers import setup_handlers
 import sys
 
 import monai
@@ -30,6 +31,26 @@ try:
     from torch.optim.lr_scheduler import LRScheduler as PyTorchLRScheduler
 except ImportError:
     from torch.optim.lr_scheduler import _LRScheduler as PyTorchLRScheduler
+
+
+"""
+If we want to purely run MONAI models, we need the following steps:
+
+- Create dataset and dataloaders (incl transforms)
+- Create model, optimizer, loss function, device
+- Create learning rate scheduler
+
+
+- Create engines (trainer, evaluator)
+    - Including 'handlers' for logging, checkpointing
+    - Include key and additional metrics (can be based on ignite metric with a handler)
+    - Optionally add 'post transforms' for model outputs
+    - Optionally add inferer (sliding window)
+
+- Create experiment logger (tensorboard, wandb, etc.)  --> or is this done in handlers?
+
+"""
+
 
 
 def run(local_rank: int, config: Any):
@@ -48,7 +69,7 @@ def run(local_rank: int, config: Any):
     # load datasets and create dataloaders
     dataset = setup_dataset(config)
     dataloader_train = dataset.get_train_dataloader()
-    dataloader_eval = dataset.get_val_dataloader()
+    dataloader_val = dataset.get_val_dataloader()
     le = len(dataloader_train)
 
     # model, optimizer, loss function, device
@@ -63,23 +84,23 @@ def run(local_rank: int, config: Any):
 
     # trainer and evaluator
     trainer = setup_trainer(config, model, optimizer, loss_fn, device, dataset, setup_metrics(config, 'train', loss_fn, model))
-    evaluator = setup_evaluator(config, model, setup_metrics(config, 'eval'), device, dataset)
+    validator = setup_evaluator(config, model, setup_metrics(config, 'val', loss_fn, model), device, dataset)
 
     # setup engines logger with python logging
     # print training configurations
     logger = setup_logging(config)
     logger.info("Configuration: \n%s", pformat(config))
-    trainer.logger = evaluator.logger = logger
+    trainer.logger = validator.logger = logger
 
-    if isinstance(lr_scheduler, PyTorchLRScheduler):
-        trainer.add_event_handler(
-            Events.ITERATION_COMPLETED,
-            lambda engine: cast(PyTorchLRScheduler, lr_scheduler).step(),
-        )
-    elif isinstance(lr_scheduler, LRScheduler):
-        trainer.add_event_handler(Events.ITERATION_COMPLETED, lr_scheduler)
-    else:
-        trainer.add_event_handler(Events.ITERATION_STARTED, lr_scheduler)
+    # if isinstance(lr_scheduler, PyTorchLRScheduler):
+    #     trainer.add_event_handler(
+    #         Events.ITERATION_COMPLETED,
+    #         lambda engine: cast(PyTorchLRScheduler, lr_scheduler).step(),
+    #     )
+    # elif isinstance(lr_scheduler, LRScheduler):
+    #     trainer.add_event_handler(Events.ITERATION_COMPLETED, lr_scheduler)
+    # else:
+    #     trainer.add_event_handler(Events.ITERATION_STARTED, lr_scheduler)
 
     # setup ignite handlers
     to_save_train = {
@@ -89,11 +110,23 @@ def run(local_rank: int, config: Any):
         "lr_scheduler": lr_scheduler,
     }
     to_save_eval = {"model": model}
-    ckpt_handler_train, ckpt_handler_eval = setup_handlers(trainer, evaluator, config, to_save_train, to_save_eval)
+    # ckpt_handler_train, ckpt_handler_eval = setup_handlers(trainer, evaluator, config, to_save_train, to_save_eval)
+
+    # writer = setup_tensorboard_writer(config, trainer, optimizer, evaluator)
+    # TODO: May be better to use a separate function to define the tensorboard loggers and attach them
+
+    setup_handlers(
+        config,
+        model,
+        optimizer,
+        trainer,
+        validator,
+        lr_scheduler=lr_scheduler
+    )
 
     # experiment tracking
-    if rank == 0:
-        exp_logger = setup_exp_logging(config, trainer, optimizer, evaluator)
+    # if rank == 0:
+    #     exp_logger = setup_exp_logging(config, trainer, optimizer, evaluator)
 
         # Log validation predictions as images
         # We define a custom event filter to log less frequently the images (to reduce storage size)
@@ -127,39 +160,39 @@ def run(local_rank: int, config: Any):
     # print metrics to the stderr
     # with `add_event_handler` API
     # for training stats
-    trainer.add_event_handler(
-        Events.ITERATION_COMPLETED(every=config.log_every_iters),
-        log_metrics,
-        tag="train",
-    )
+    # trainer.add_event_handler(
+    #     Events.ITERATION_COMPLETED(every=config.log_every_iters),
+    #     log_metrics,
+    #     tag="train",
+    # )
 
     # run evaluation at every training epoch end
     # with shortcut `on` decorator API and
     # print metrics to the stderr
     # again with `add_event_handler` API
     # for evaluation stats
-    @trainer.on(Events.EPOCH_COMPLETED(every=config.eval_every_epochs))
-    def _():
-        if config.engine_type == 'ignite':
-            evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
-        elif config.engine_type == 'monai':
-            evaluator.run()
-        log_metrics(evaluator, "eval")
+    # @trainer.on(Events.EPOCH_COMPLETED(every=config.eval_every_epochs))
+    # def _():
+    #     if config.engine_type == 'ignite':
+    #         evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
+    #     elif config.engine_type == 'monai':
+    #         evaluator.run()
+    #     log_metrics(evaluator, "eval")
 
     # let's try run evaluation first as a sanity check
-    @trainer.on(Events.STARTED)
-    def _():
-        if config.engine_type == 'ignite':
-            evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
-        elif config.engine_type == 'monai':
-            evaluator.run()
-            # TODO: Make generic evaluator so we can use the same call?
+    # @trainer.on(Events.STARTED)
+    # def _():
+    #     if config.engine_type == 'ignite':
+    #         evaluator.run(dataloader_eval, epoch_length=config.eval_epoch_length)
+    #     elif config.engine_type == 'monai':
+    #         evaluator.run()
+    #         # TODO: Make generic evaluator so we can use the same call?
 
     logger.info("Start training for %d epochs", config.max_epochs)
 
-    if rank == 0:
-        pbar = ProgressBar()
-        pbar.attach(trainer)
+    # if rank == 0:
+    #     pbar = ProgressBar()
+    #     pbar.attach(trainer)
 
     # setup if done. let's run the training
     if config.engine_type == 'ignite':
@@ -172,19 +205,20 @@ def run(local_rank: int, config: Any):
         trainer.run()
 
     # close logger
-    if rank == 0:
-        exp_logger.close()
+    # if rank == 0:
+    #     exp_logger.close()
 
     # show last checkpoint names
-    logger.info(
-        "Last training checkpoint name - %s",
-        ckpt_handler_train.last_checkpoint,
-    )
+    # TODO: This would be nice to log still
+    # logger.info(
+    #     "Last training checkpoint name - %s",
+    #     ckpt_handler_train.last_checkpoint,
+    # )
 
-    logger.info(
-        "Last evaluation checkpoint name - %s",
-        ckpt_handler_eval.last_checkpoint,
-    )
+    # logger.info(
+    #     "Last evaluation checkpoint name - %s",
+    #     ckpt_handler_eval.last_checkpoint,
+    # )
 
 
 # main entrypoint

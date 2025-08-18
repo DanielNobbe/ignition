@@ -1,8 +1,8 @@
 seed: 777 # random seed
-batch_size: 2 # train batch size
-eval_batch_size: 4 # evaluation batch size
+batch_size: 4 # train batch size
+eval_batch_size: 8 # evaluation batch size
 num_workers: 10 # number of subprocesses to use for data loading
-max_epochs: 100 # number of maximum epochs
+max_epochs: 400 # number of maximum epochs
 use_amp: false # use AMP (Automatic Mixed Precision)
 debug: false
 train_epoch_length: null
@@ -12,8 +12,7 @@ n_saved: 2
 save_every_iters: 1000
 patience: 5
 output_dir: ./logs
-log_every_iters: 10
-lr: 0.02 # learning rate
+log_every_iters: 1
 accumulation_steps: 1 # parameter for gradient accumulation
 eval_every_epochs: 10 # evaluate every n epochs
 num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
@@ -21,7 +20,7 @@ num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
 backend: gloo
 task: segmentation # task type
 engine_type: monai # or monai or ignite
-roi_size: [224, 224, 64] # native roi size for model
+roi_size: [64,64,8] # native roi size for model
 inferer:  # Use sliding window inference
   # set to null to disable sliding window inference
   _target_: monai.inferers.SlidingWindowInferer
@@ -33,7 +32,6 @@ inferer:  # Use sliding window inference
   sigma_scale: 0.125 # scale for gaussian blending, only used if mode is 'gaussian'
   progress: true # show progress bar during inference
   # device: 'cuda' # device to use for inference, can be 'cpu' or 'cuda' (or mps?)
-  
 model:
   type: monai # model type, torchvision or monai
   # name: deeplabv3_mobilenet_v3_large # model name
@@ -43,12 +41,16 @@ model:
   init_filters: 16 # initial number of filters
   in_channels: 1 # number of input channels, 1 for grayscale
   out_channels: ${num_classes} # number of output channels, should match num_classes -- is it including the background?
-  dropout_prob: 0.2 # dropout probability
+  dropout_prob: 0.0 # dropout probability, 0.2 is good default
+  blocks_down: [1, 2, 2, 4] # default
+  blocks_up: [1, 1, 1]  # somehow they do another upscaling after this
+  # blocks_down: [1, 1] # more efficient
+  # blocks_up: [1]  
 dataset:
   type: MonaiSegmentationFolder # dataset type
-  images_dir: /Users/daniel/data/medicaldecathlon/Task03_Liver/imagesTr # images path
-  labels_dir: /Users/daniel/data/medicaldecathlon/Task03_Liver/labelsTr # labels path
-  subset_size: 0.05
+  images_dir: /Users/daniel/data/medicaldecathlon/toy_datasets/liverv3/images # images path
+  labels_dir: /Users/daniel/data/medicaldecathlon/toy_datasets/liverv3/labels # labels path
+  subset_size: 0.1
   val_size: 0.2
   cache_num: 20 # number of samples to cache in memory
   # download: false # download the dataset if not present
@@ -77,9 +79,10 @@ dataset:
       #   mode: 'bilinear' # interpolation mode for resizing, can also be both 'nearest' and 'bilinear'
       #   align_corners: null # align corners for the interpolation, set to null for default behavior
       - type: RandSpatialCrop
-        roi_size: [224, 224, 64] # crop size for training
+        # roi_size: [224, 224, 64] # crop size for training
+        roi_size: ${roi_size} # crop size for training
         random_size: false # use fixed size for cropping
-        rabdom_center: true # use random center for cropping
+        random_center: false # use random center for cropping
       - type: RandFlip
         prob: 0.5 # probability of flipping the image
         spatial_axis: 0 # axes to flip the image
@@ -116,6 +119,19 @@ dataset:
         channel_wise: true # normalize each channel separately
         subtrahend: null # subtrahend for normalization
         divisor: null # divisor for normalization
+post_transforms:
+  train: null  # could perhaps do the keeplargestconnectedcomponent
+  val:  # TODO: Check if model already does a softmax? may need to add activation here
+    _target_: monai.transforms.Compose
+    transforms:
+      - _target_: monai.transforms.Activationsd
+        keys: ['pred']  # keys to apply the activation to
+        softmax: true
+      - _target_: monai.transforms.AsDiscreted
+        keys: ['label', 'pred']  # keys to apply the discretization to
+        argmax: true  # apply argmax to the predictions
+        to_onehot: ${num_classes}  # convert to one-hot encoding
+        include_background: true  # include background class in the discretization
 loss:
   type: monai # loss type
   _target_: monai.losses.DiceLoss
@@ -128,16 +144,110 @@ lr_scheduler:
   power: 0.8 # power for the polynomial decay
 optimizer:
   type: SGD
-  lr: 0.08 # base learning rate for the optimizer
-  momentum: 0.8 # momentum for the optimizer
+  lr: 0.4 # base learning rate for the optimizer
+  momentum: 0.4 # momentum for the optimizer
   weight_decay: 0 #5.0e-4 # weight decay for the optimizer
   nesterov: false # use Nesterov momentum
 metrics:
-  eval:
-    type: SegmentationMetrics # evaluation metrics type
-    iou: true # use IoU metric
-    miou: true # use mean IoU metric
-    background_index: 0 # ignore background class in IoU calculation, set to negative/null to disable
-    best_metric_name: mIoU # name of the best metric to track for early stopping and checkpointing
+  val:  # by default, the first metric is used as the 'key' metric
+    - _target_: monai.handlers.MeanDice
+      _key_: mean_dice
+      include_background: true
+      output_transform: 
+        _target_: monai.handlers.from_engine
+        keys: ['pred', 'label']  # keys to extract from the output
+    - _target_: monai.handlers.MeanIoUHandler
+      _key_: mean_iou
+      include_background: true
+      output_transform: 
+        _target_: monai.handlers.from_engine
+        keys: ['pred', 'label']  # keys to extract from the output
+    # type: SegmentationMetrics # evaluation metrics type
+    # iou: true # use IoU metric
+    # miou: true # use mean IoU metric
+    # background_index: 0 # ignore background class in IoU calculation, set to negative/null to disable
+    # best_metric_name: mIoU # name of the best metric to track for early stopping and checkpointing
   train:
-    type: LossMetric # training metrics type
+    - _target_: monai.handlers.IgniteMetricHandler
+      _key_: train_loss
+      _requires_: loss_fn
+      output_transform:
+        _target_: monai.handlers.from_engine
+        keys: ['pred', 'label']  # keys to extract from the output, not sure why we can't just use 'loss' here
+    # type: LossMetric # training metrics type
+  val_key_metric_name: ${metrics.val[0]._key_} # name of the key metric for validation, used for early stopping and checkpointing
+  train_key_metric_name: ${metrics.train[0]._key_} # name of the key metric for training, used for logging
+handlers:
+  train:
+    - _target_:  monai.handlers.LrScheduleHandler
+      _requires_: lr_scheduler
+      print_lr: true
+      epoch_level: false
+    - _target_: monai.handlers.ValidationHandler
+      _requires_: validator
+      interval: 1 # validate every epoch
+      epoch_level: true # validate at the end of each epoch
+      exec_at_start: true
+    - _target_: monai.handlers.StatsHandler
+      iteration_log: true
+      epoch_log: false
+      tag_name: "train loss"
+    - _target_: monai.handlers.TensorBoardStatsHandler
+      _requires_: [summary_writer]
+      iteration_log: true
+      epoch_log: true
+      tag_name: "Train Loss"
+    - _target_: monai.handlers.CheckpointSaver
+      _convert_: partial
+      _requires_: [save_dict, save_dir]
+      save_final: true
+      final_filename: "final_model.pth"
+      save_key_metric: false
+      epoch_level: true
+      save_interval: 5
+      n_saved: 5
+    - _target_: ignite.handlers.ProgressBar
+      desc: "Training"
+    # NOTE: ignite also offers a terminate on nan handler, could be interesting
+  validation:
+    # - _target_: monai.handlers.EarlyStopHandler
+    #   _requires_: trainer
+    #   score_function: 
+    #     _target_: monai.handlers.utils.stopping_fn_from_metric
+    #     metric_name: ${metrics.val_key_metric_name}
+    #   patience: 5
+    #   min_delta: 0.0001
+    #   cumulative_delta: false
+    #   epoch_level: true
+    - _target_: monai.handlers.CheckpointSaver
+      _convert_: partial
+      _requires_: [save_dict, save_dir]
+      save_final: false
+      save_key_metric: true
+      epoch_level: true
+      save_interval: 1
+      key_metric_n_saved: 1
+      key_metric_greater_or_equal: true
+    - _target_: monai.handlers.StatsHandler
+      iteration_log: false
+      epoch_log: true
+      tag_name: "Validation"
+    # - _target_: monai.handlers.TensorBoardStatsHandler
+    #   _requires_: [summary_writer, global_epoch_transform]
+    #   iteration_log: false
+    #   epoch_log: true
+    #   tag_name: "Validation"
+    - _target_: monai.handlers.TensorBoardImageHandler
+      _requires_: summary_writer
+      epoch_level: true
+      interval: 1
+      index: 0
+      frame_dim: -1
+      batch_transform:
+        _target_: monai.handlers.from_engine
+        keys: ['image', 'label']  # keys to extract from the batch
+      output_transform:
+        _target_: monai.handlers.from_engine
+        keys: ['pred']  # keys to extract from the output
+    
+      
