@@ -1,32 +1,27 @@
+import sys
 from functools import partial
 from pprint import pformat
 from typing import Any, cast
+from warnings import warn
 
+import hydra
 import ignite.distributed as idist
+import monai
 from ignite.engine import Events
 from ignite.handlers import LRScheduler, ProgressBar
 from ignite.utils import manual_seed
-
-
-from ignition.datasets import setup_dataset
-from ignition.engines import setup_evaluator, setup_trainer
-from ignition.data.utils import denormalize
-from ignition.models import setup_model
-from ignition.utils import *
-from ignition.losses import setup_loss
-from ignition.lr_schedulers import setup_lr_scheduler
-from ignition.optimizers import setup_optimizer
-from ignition.metrics import setup_metrics
-from ignition.handlers import setup_handlers
-import sys
-
-import monai
-
-import hydra
 from omegaconf import DictConfig
 
-from warnings import warn
-
+from ignition.data.utils import denormalize
+from ignition.datasets import setup_dataset
+from ignition.engines import setup_evaluator, setup_trainer
+from ignition.handlers import setup_handlers
+from ignition.losses import setup_loss
+from ignition.lr_schedulers import setup_lr_scheduler
+from ignition.metrics import setup_metrics
+from ignition.models import setup_model
+from ignition.optimizers import setup_optimizer
+from ignition.utils import *
 
 try:
     from torch.optim.lr_scheduler import LRScheduler as PyTorchLRScheduler

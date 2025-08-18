@@ -1,22 +1,22 @@
-from typing import Any, Dict, Union, Callable
+import logging
+from typing import Any, Callable, Dict, Union
 
 import ignite.distributed as idist
 import torch
-from ignite.engine import DeterministicEngine, Engine, Events, create_supervised_trainer, create_supervised_evaluator
+from hydra.utils import instantiate
+from ignite.engine import (DeterministicEngine, Engine, Events,
+                           create_supervised_evaluator,
+                           create_supervised_trainer)
 from ignite.metrics import Metric
+from monai.engines import SupervisedEvaluator, SupervisedTrainer
 from torch.amp import GradScaler
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.utils.data import DistributedSampler, Sampler
-from ignition.models import IgnitionModel
+
 from ignition.datasets import PairedDataset
+from ignition.models import IgnitionModel
 from ignition.utils import split_dict_at_index
-
-from monai.engines import SupervisedTrainer, SupervisedEvaluator
-
-from hydra.utils import instantiate
-
-import logging
 
 logger = logging.getLogger(__name__)
 

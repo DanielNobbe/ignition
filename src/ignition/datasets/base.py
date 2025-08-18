@@ -21,9 +21,10 @@ which functions are necessary in a generic setup.
 Maybe we could specify transforms in e.g. the config.
 """
 
-import torch
-from warnings import warn
 from abc import ABC, abstractmethod
+from warnings import warn
+
+import torch
 
 """
 We first make a class that can create and hold a single

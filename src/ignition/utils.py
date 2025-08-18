@@ -1,15 +1,14 @@
 import logging
+import numbers
 from datetime import datetime
-from logging import Logger
+from logging import Logger, getLogger
 from pathlib import Path
 from typing import Any, Mapping, Optional, Union
 
 import ignite.distributed as idist
 import torch
-from torch.utils.tensorboard import SummaryWriter
 from ignite.contrib.engines import common
 from ignite.contrib.handlers.tensorboard_logger import OutputHandler
-
 from ignite.engine import Engine
 from ignite.engine.events import Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
@@ -17,10 +16,7 @@ from ignite.handlers.early_stopping import EarlyStopping
 from ignite.handlers.terminate_on_nan import TerminateOnNan
 from ignite.utils import setup_logger
 from omegaconf import OmegaConf, listconfig
-
-import numbers
-
-from logging import getLogger
+from torch.utils.tensorboard import SummaryWriter
 
 printer = getLogger(__name__)
 

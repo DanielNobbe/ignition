@@ -1,8 +1,8 @@
-from .base import IgnitionModel
-
-from torchvision.models.segmentation import deeplabv3_resnet50, deeplabv3_mobilenet_v3_large
-
 from ignite.utils import convert_tensor
+from torchvision.models.segmentation import (deeplabv3_mobilenet_v3_large,
+                                             deeplabv3_resnet50)
+
+from .base import IgnitionModel
 
 
 class TorchVisionSegmentationModel(IgnitionModel):

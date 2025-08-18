@@ -1,6 +1,7 @@
 import torch.nn as nn
 from hydra.utils import instantiate
 
+
 def setup_loss(config) -> nn.Module:
     """
     Setup the loss function based on the configuration.

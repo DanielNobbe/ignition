@@ -1,27 +1,16 @@
 import os
-from .base import PairedDataset
 from warnings import warn
-from monai.data import CacheDataset, DataLoader
+
 from ignite.utils import convert_tensor
+from monai.data import CacheDataset, DataLoader
+from monai.transforms import (Activations, AsDiscrete, Compose,
+                              EnsureChannelFirstd, EnsureTyped, LoadImaged,
+                              NormalizeIntensityd, Orientationd, RandFlipd,
+                              RandScaleIntensityd, RandShiftIntensityd,
+                              RandSpatialCropd, Resize, ScaleIntensityd,
+                              Spacingd)
 
-
-from monai.transforms import (
-    Activations,
-    EnsureChannelFirstd,
-    AsDiscrete,
-    Compose,
-    RandSpatialCropd,
-    Resize,
-    ScaleIntensityd,
-    LoadImaged,
-    EnsureTyped,
-    Orientationd,
-    Spacingd,
-    RandFlipd,
-    NormalizeIntensityd,
-    RandScaleIntensityd,
-    RandShiftIntensityd,
-)
+from .base import PairedDataset
 
 
 class SegmentationFolder(PairedDataset):

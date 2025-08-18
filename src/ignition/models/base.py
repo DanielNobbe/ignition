@@ -1,9 +1,9 @@
+from abc import ABC, abstractmethod
+from typing import Callable
+
 import torch
 from torch import nn
 
-from typing import Callable
-
-from abc import ABC, abstractmethod
 
 class IgnitionModel(nn.Module, ABC):
     """Base class for models in Ignition.

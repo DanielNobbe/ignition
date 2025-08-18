@@ -1,6 +1,8 @@
-from torch.optim.lr_scheduler import PolynomialLR
 from functools import partial
+
 from hydra.utils import instantiate
+from torch.optim.lr_scheduler import PolynomialLR
+
 
 def setup_lr_scheduler(optimizer, config, dataset_length):
     """

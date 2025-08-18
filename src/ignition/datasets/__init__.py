@@ -1,7 +1,7 @@
 from .base import PairedDataset
-
-from .vocsegmentation import VOCSegmentationPairedDataset
 from .monai import SegmentationFolder
+from .vocsegmentation import VOCSegmentationPairedDataset
+
 
 # TODO: Move to hydra instantiate
 def setup_dataset(config):

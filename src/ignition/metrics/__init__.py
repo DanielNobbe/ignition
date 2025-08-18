@@ -1,14 +1,13 @@
-from .loss import LossMetric, MonaiLossMetric
-from .utils import SegmentationMetrics
 
-from typing import Dict, Callable, Any
-from torch.nn import Module
-from ignite.metrics import Metric
-from ignite.engine import Engine
-from ignite.handlers import global_step_from_engine
+from typing import Any, Callable, Dict
 
 from hydra.utils import instantiate
+from ignite.engine import Engine
+from ignite.handlers import global_step_from_engine
+from ignite.metrics import Metric
 from omegaconf import DictConfig, ListConfig
+from torch.nn import Module
+
 
 def instantiate_metric(
     metric_config: DictConfig, **kwargs

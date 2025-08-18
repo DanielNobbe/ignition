@@ -1,7 +1,8 @@
+from hydra.utils import instantiate
+
 from .base import IgnitionModel
 from .torchvision import TorchVisionSegmentationModel
 
-from hydra.utils import instantiate
 
 def setup_model(config):
     match config.model.type:

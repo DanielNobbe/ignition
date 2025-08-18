@@ -1,32 +1,22 @@
-from monai.handlers import (
-    LrScheduleHandler,
-    ValidationHandler,
-    StatsHandler,
-    TensorBoardStatsHandler,
-    CheckpointSaver,
-    EarlyStopHandler,
-    TensorBoardImageHandler,
-    from_engine
-)
-from ignite.handlers import ProgressBar, global_step_from_engine
-
-from ignite.engine import Engine
-import torch.nn as nn
-from torch.optim import Optimizer
-from torch.utils.tensorboard import SummaryWriter
-from torch.optim.lr_scheduler import _LRScheduler as LrScheduler
+import numbers
 import os
+from typing import Any, Iterable
 
+import torch.nn as nn
+from flatten_dict import flatten
+from hydra.utils import instantiate
 from ignite.contrib.engines import common
 from ignite.contrib.handlers.tensorboard_logger import OutputHandler
-
-from typing import Any, Iterable
-from flatten_dict import flatten
-import numbers
-
+from ignite.engine import Engine
+from ignite.handlers import ProgressBar, global_step_from_engine
+from monai.handlers import (CheckpointSaver, EarlyStopHandler,
+                            LrScheduleHandler, StatsHandler,
+                            TensorBoardImageHandler, TensorBoardStatsHandler,
+                            ValidationHandler, from_engine)
 from omegaconf import DictConfig, ListConfig
-
-from hydra.utils import instantiate
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler as LrScheduler
+from torch.utils.tensorboard import SummaryWriter
 
 from ignition.utils import get_epoch_function
 
