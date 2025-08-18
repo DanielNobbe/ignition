@@ -17,7 +17,7 @@ num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
 backend: gloo
 task: segmentation # task type
 engine_type: monai # or monai or ignite
-roi_size: [64,64,8] # native roi size for model
+roi_size: [224, 224, 64]] # native roi size for model
 inferer: # set to null to disable sliding window inference
   _target_: monai.inferers.SlidingWindowInferer
   roi_size: ${roi_size} # roi size for inference
