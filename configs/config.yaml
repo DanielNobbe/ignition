@@ -5,8 +5,6 @@ num_workers: 10 # number of subprocesses to use for data loading
 max_epochs: 400 # number of maximum epochs
 use_amp: false # use AMP (Automatic Mixed Precision)
 debug: false
-train_epoch_length: null
-eval_epoch_length: null
 filename_prefix: training
 n_saved: 2
 save_every_iters: 1000
@@ -16,57 +14,35 @@ log_every_iters: 1
 accumulation_steps: 1 # parameter for gradient accumulation
 eval_every_epochs: 10 # evaluate every n epochs
 num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
-# check how to ignore background? And if that needs to count towards clas no?
 backend: gloo
 task: segmentation # task type
 engine_type: monai # or monai or ignite
 roi_size: [64,64,8] # native roi size for model
-inferer:  # Use sliding window inference
-  # set to null to disable sliding window inference
+inferer: # set to null to disable sliding window inference
   _target_: monai.inferers.SlidingWindowInferer
   roi_size: ${roi_size} # roi size for inference
   sw_batch_size: ${eval_batch_size} # sliding window batch size
   overlap: 0.25
   mode: 'constant' # blending mode, can be 'constant' or 'gaussian'
-  # for gaussian, can specify sigma_scale
-  sigma_scale: 0.125 # scale for gaussian blending, only used if mode is 'gaussian'
+  sigma_scale: 0.125 # scale for gaussian blending
   progress: true # show progress bar during inference
-  # device: 'cuda' # device to use for inference, can be 'cpu' or 'cuda' (or mps?)
 model:
   type: monai # model type, torchvision or monai
-  # name: deeplabv3_mobilenet_v3_large # model name
-  # pretrained: true # use pretrained weights
   _target_: monai.networks.nets.SegResNet
   spatial_dims: 3 # number of spatial dimensions, 2 for 2D, 3 for 3D
   init_filters: 16 # initial number of filters
   in_channels: 1 # number of input channels, 1 for grayscale
-  out_channels: ${num_classes} # number of output channels, should match num_classes -- is it including the background?
+  out_channels: ${num_classes} # number of output channels
   dropout_prob: 0.0 # dropout probability, 0.2 is good default
   blocks_down: [1, 2, 2, 4] # default
   blocks_up: [1, 1, 1]  # somehow they do another upscaling after this
-  # blocks_down: [1, 1] # more efficient
-  # blocks_up: [1]  
 dataset:
   type: MonaiSegmentationFolder # dataset type
-  images_dir: /Users/daniel/data/medicaldecathlon/toy_datasets/liverv3/images # images path
-  labels_dir: /Users/daniel/data/medicaldecathlon/toy_datasets/liverv3/labels # labels path
+  images_dir: data/medicaldecathlon/Task03_Liver/imagesTr # images path
+  labels_dir: data/medicaldecathlon/Task03_Liver/labelsTr # labels path
   subset_size: 0.1
   val_size: 0.2
   cache_num: 20 # number of samples to cache in memory
-  # download: false # download the dataset if not present
-  # subset_size: 0.1 # subset size for the dataset, 0.1 means 10% of the data. If set to null, the full dataset is used
-  # train:
-  #   img_size: 480 # image size for training
-  # val:
-  #   img_size: 513 # image size for validation
-  # # TODO: These could also be part of transform settings
-  # mean: [0.485, 0.456, 0.406]
-  # std: [0.229, 0.224, 0.225] # normalization values for the dataset
-  # datasets:
-  #   train:
-  #     type: VOCSegmentation # dataset type, does not matter if paired dataset type is specified
-  #     root: /Users/daniel/data/VOCdevkit # dataset root path
-  #     download: true # download the dataset if not present
   transforms:  # only for monai datasets?
     train:  # NOTE: Order matters! Settings are based on: https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/brats_segmentation_3d.ipynb
       # - type: ScaleIntensity
@@ -74,10 +50,10 @@ dataset:
         channel_dim: no_channel  # to automatically add channel dimension if not present
       - type: Orientation
         axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
-      # - type: Spacing
-      #   pixdim: [1.0, 1.0, 1.0] # pixel dimensions for the image
-      #   mode: 'bilinear' # interpolation mode for resizing, can also be both 'nearest' and 'bilinear'
-      #   align_corners: null # align corners for the interpolation, set to null for default behavior
+      - type: Spacing
+        pixdim: [1.0, 1.0, 1.0] # pixel dimensions for the image
+        mode: 'bilinear' # interpolation mode for resizing, can also be both 'nearest' and 'bilinear'
+        align_corners: null # align corners for the interpolation, set to null for default behavior
       - type: RandSpatialCrop
         # roi_size: [224, 224, 64] # crop size for training
         roi_size: ${roi_size} # crop size for training
@@ -110,18 +86,18 @@ dataset:
         channel_dim: no_channel  # to automatically add channel dimension if not present
       - type: Orientation
         axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
-      # - type: Spacing 
-      #   pixdim: [1.0, 1.0, 1.0] # pixel dimensions for the image
-      #   mode: 'bilinear' # interpolation mode for resizing, can also be both 'nearest' and 'bilinear'
-      #   align_corners: null # align corners for the interpolation, set to null for default behavior
+      - type: Spacing 
+        pixdim: [1.0, 1.0, 1.0] # pixel dimensions for the image
+        mode: 'bilinear' # interpolation mode for resizing, can also be both 'nearest' and 'bilinear'
+        align_corners: null # align corners for the interpolation, set to null for default behavior
       - type: NormalizeIntensity
         nonzero: true # normalize only non-zero values
         channel_wise: true # normalize each channel separately
         subtrahend: null # subtrahend for normalization
         divisor: null # divisor for normalization
 post_transforms:
-  train: null  # could perhaps do the keeplargestconnectedcomponent
-  val:  # TODO: Check if model already does a softmax? may need to add activation here
+  train: null  # option: keeplargestconnectedcomponent
+  val:
     _target_: monai.transforms.Compose
     transforms:
       - _target_: monai.transforms.Activationsd
@@ -162,6 +138,7 @@ metrics:
       output_transform: 
         _target_: monai.handlers.from_engine
         keys: ['pred', 'label']  # keys to extract from the output
+    # or, custom implemented metrics:
     # type: SegmentationMetrics # evaluation metrics type
     # iou: true # use IoU metric
     # miou: true # use mean IoU metric
@@ -174,7 +151,6 @@ metrics:
       output_transform:
         _target_: monai.handlers.from_engine
         keys: ['pred', 'label']  # keys to extract from the output, not sure why we can't just use 'loss' here
-    # type: LossMetric # training metrics type
   val_key_metric_name: ${metrics.val[0]._key_} # name of the key metric for validation, used for early stopping and checkpointing
   train_key_metric_name: ${metrics.train[0]._key_} # name of the key metric for training, used for logging
 handlers:
@@ -210,15 +186,15 @@ handlers:
       desc: "Training"
     # NOTE: ignite also offers a terminate on nan handler, could be interesting
   validation:
-    # - _target_: monai.handlers.EarlyStopHandler
-    #   _requires_: trainer
-    #   score_function: 
-    #     _target_: monai.handlers.utils.stopping_fn_from_metric
-    #     metric_name: ${metrics.val_key_metric_name}
-    #   patience: 5
-    #   min_delta: 0.0001
-    #   cumulative_delta: false
-    #   epoch_level: true
+    - _target_: monai.handlers.EarlyStopHandler
+      _requires_: trainer
+      score_function: 
+        _target_: monai.handlers.utils.stopping_fn_from_metric
+        metric_name: ${metrics.val_key_metric_name}
+      patience: 5
+      min_delta: 0.0001
+      cumulative_delta: false
+      epoch_level: true
     - _target_: monai.handlers.CheckpointSaver
       _convert_: partial
       _requires_: [save_dict, save_dir]
@@ -232,11 +208,11 @@ handlers:
       iteration_log: false
       epoch_log: true
       tag_name: "Validation"
-    # - _target_: monai.handlers.TensorBoardStatsHandler
-    #   _requires_: [summary_writer, global_epoch_transform]
-    #   iteration_log: false
-    #   epoch_log: true
-    #   tag_name: "Validation"
+    - _target_: monai.handlers.TensorBoardStatsHandler
+      _requires_: [summary_writer, global_epoch_transform]
+      iteration_log: false
+      epoch_log: true
+      tag_name: "Validation"
     - _target_: monai.handlers.TensorBoardImageHandler
       _requires_: summary_writer
       epoch_level: true
