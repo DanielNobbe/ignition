@@ -7,16 +7,10 @@ from typing import Any, Mapping, Optional, Union
 
 import ignite.distributed as idist
 import torch
-from ignite.contrib.engines import common
-from ignite.contrib.handlers.tensorboard_logger import OutputHandler
 from ignite.engine import Engine
-from ignite.engine.events import Events
-from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
-from ignite.handlers.early_stopping import EarlyStopping
-from ignite.handlers.terminate_on_nan import TerminateOnNan
+from ignite.handlers import Checkpoint
 from ignite.utils import setup_logger
-from omegaconf import OmegaConf, listconfig
-from torch.utils.tensorboard import SummaryWriter
+from omegaconf import OmegaConf
 
 printer = getLogger(__name__)
 
@@ -142,14 +136,15 @@ def setup_logging(config: Any) -> Logger:
     )
     return logger
 
+
 def get_key_metric_value(engine):
     return engine.state.metrics.get(engine.key_metric_name, None)
 
 
 def get_epoch_function(engine: Engine) -> int:
     """Get the current epoch number from the engine state."""
-    
+
     def get_epoch(*args, **kwargs):
         return engine.state.epoch
-    
+
     return get_epoch

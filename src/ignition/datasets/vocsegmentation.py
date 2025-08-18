@@ -9,7 +9,7 @@ from torchvision.datasets.voc import VOCSegmentation
 
 from ignition.data import IgnoreMaskBoundaries, ToTensor, TransformedDataset
 
-from .base import IgnitionDataset, PairedDataset
+from .base import PairedDataset
 
 
 class VOCSegmentationPIL(VOCSegmentation):
@@ -58,10 +58,9 @@ class VOCSegmentationPIL(VOCSegmentation):
             }
 
         return {"image": img, "mask": mask}
-    
+
 
 class VOCSegmentationPairedDataset(PairedDataset):
-
     """This is implemented with the following steps:
 
     for train:
@@ -69,7 +68,7 @@ class VOCSegmentationPairedDataset(PairedDataset):
     2. set up albumentations transforms
     3. create a TransformedDataset with the dataset and transforms
     4. create a DataLoader with the TransformedDataset
-    
+
     """
 
     def _setup_datasets(self):
@@ -79,7 +78,7 @@ class VOCSegmentationPairedDataset(PairedDataset):
             image_set="train",
             download=False,
         )
-        
+
         dataset_eval = VOCSegmentationPIL(root=self.config.dataset.root, year="2012", image_set="val", download=False)
 
         val_img_size = self.config.dataset.val.img_size
@@ -100,7 +99,7 @@ class VOCSegmentationPairedDataset(PairedDataset):
                 ToTensor(),
             ]
         )
-        
+
         transform_eval = A.Compose(
             [
                 A.PadIfNeeded(val_img_size, val_img_size, border_mode=cv2.BORDER_CONSTANT),
@@ -113,14 +112,13 @@ class VOCSegmentationPairedDataset(PairedDataset):
         self.dataset_train = TransformedDataset(dataset_train, transform_fn=transform_train)
         self.dataset_eval = TransformedDataset(dataset_eval, transform_fn=transform_eval)
 
-        if self.config.dataset.get('subset_size') is not None:
+        if self.config.dataset.get("subset_size") is not None:
             train_subset_size = int(len(dataset_train) * self.config.dataset.subset_size)
             eval_subset_size = int(len(dataset_eval) * self.config.dataset.subset_size)
             if train_subset_size <= 0 or eval_subset_size <= 0:
                 raise ValueError("data_subset_size must result in at least one sample for both subsets.")
             dataset_train = torch.utils.data.Subset(dataset_train, range(train_subset_size))
             dataset_eval = torch.utils.data.Subset(dataset_eval, range(eval_subset_size))
-
 
         self.train_dataloader = idist.auto_dataloader(
             self.dataset_train,
@@ -139,7 +137,7 @@ class VOCSegmentationPairedDataset(PairedDataset):
 
     def get_train_dataloader(self):
         return self.train_dataloader
-    
+
     def get_val_dataloader(self):
         return self.val_dataloader
 
@@ -149,5 +147,5 @@ class VOCSegmentationPairedDataset(PairedDataset):
             x = convert_tensor(x, device=device, non_blocking=non_blocking)
             y = convert_tensor(y, device=device, non_blocking=non_blocking).long()
             return x, y
-        
+
         return prepare_batch

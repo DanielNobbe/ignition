@@ -1,24 +1,22 @@
 import logging
-from typing import Any, Callable, Dict, Union
+from typing import Any, Dict, Union
 
 import ignite.distributed as idist
 import torch
 from hydra.utils import instantiate
-from ignite.engine import (DeterministicEngine, Engine, Events,
-                           create_supervised_evaluator,
-                           create_supervised_trainer)
+from ignite.engine import DeterministicEngine, Engine, create_supervised_evaluator, create_supervised_trainer
 from ignite.metrics import Metric
 from monai.engines import SupervisedEvaluator, SupervisedTrainer
 from torch.amp import GradScaler
 from torch.nn import Module
 from torch.optim import Optimizer
-from torch.utils.data import DistributedSampler, Sampler
 
 from ignition.datasets import PairedDataset
 from ignition.models import IgnitionModel
 from ignition.utils import split_dict_at_index
 
 logger = logging.getLogger(__name__)
+
 
 def setup_trainer(
     config: Any,
@@ -36,7 +34,7 @@ def setup_trainer(
         scaler = None
 
     match config.engine_type:
-        case 'ignite':
+        case "ignite":
             trainer = create_supervised_trainer(
                 model,
                 optimizer,
@@ -47,11 +45,11 @@ def setup_trainer(
                 non_blocking=True,
                 scaler=scaler,
                 model_transform=model.get_model_transform(),
-                output_transform=model.get_train_output_transform()
+                output_transform=model.get_train_output_transform(),
             )
             for name, metric in (metrics or {}).items():
                 metric.attach(trainer, name)
-        case 'monai':
+        case "monai":
             # TODO: Add option to use slidingwindow inferer during training
             key_metric, other_metrics = split_dict_at_index(metrics, 1)
 
@@ -67,7 +65,6 @@ def setup_trainer(
                 additional_metrics=other_metrics,
             )
 
-
     return trainer
 
 
@@ -77,13 +74,13 @@ def setup_evaluator(
     metrics: Dict[str, Metric],
     device: Union[str, torch.device],
     dataset: PairedDataset,
-    name: str = "val"
+    name: str = "val",
 ) -> Engine:
 
-# TODO: Move metrics declaration into here?
+    # TODO: Move metrics declaration into here?
 
     match config.engine_type:
-        case 'ignite':
+        case "ignite":
             evaluator = create_supervised_evaluator(
                 model,
                 metrics=metrics,
@@ -94,7 +91,7 @@ def setup_evaluator(
             )
             for name, metric in metrics.items():
                 metric.attach(evaluator, name)
-        case 'monai':
+        case "monai":
 
             key_metric, other_metrics = split_dict_at_index(metrics, 1)
             # relies on the fact that dicts are ordered in Python 3.7+
@@ -103,7 +100,7 @@ def setup_evaluator(
                 device=device,
                 val_data_loader=dataset.get_val_dataloader(),
                 network=model,
-                inferer=instantiate(config.inferer) if config.get('inferer') else None,
+                inferer=instantiate(config.inferer) if config.get("inferer") else None,
                 postprocessing=instantiate(config.post_transforms.get(name)),
                 non_blocking=True,
                 key_val_metric=key_metric,

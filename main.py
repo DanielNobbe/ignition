@@ -37,7 +37,6 @@ def run(local_rank: int, config: Any):
             "Running this training script on multiple GPUs is not fully supported. To add support, look into adding rank-conditional logic for the handlers, metrics and dataloaders. And verify that all LR schedulers and optimizers support distributed training, e.g. by using `ignite.distributed.auto_optim`."
         )
 
-
     monai.config.print_config()
     # make a certain seed
     rank = idist.get_rank()
@@ -59,43 +58,37 @@ def run(local_rank: int, config: Any):
     # model, optimizer, loss function, device
     device = idist.device()
     model = idist.auto_model(setup_model(config))
-    optimizer = idist.auto_optim(
-        setup_optimizer(model.parameters(), config)
-    )
+    optimizer = idist.auto_optim(setup_optimizer(model.parameters(), config))
     loss_fn = setup_loss(config).to(device=device)
     lr_scheduler = setup_lr_scheduler(optimizer, config, le)
 
     # trainer and evaluator
-    trainer = setup_trainer(config, model, optimizer, loss_fn, device, dataset, setup_metrics(config, 'train', loss_fn, model))
-    validator = setup_evaluator(config, model, setup_metrics(config, 'val', loss_fn, model), device, dataset)
+    trainer = setup_trainer(
+        config, model, optimizer, loss_fn, device, dataset, setup_metrics(config, "train", loss_fn, model)
+    )
+    validator = setup_evaluator(config, model, setup_metrics(config, "val", loss_fn, model), device, dataset)
 
     # setup engines logger with python logging
     logger = setup_logging(config)
     logger.info("Configuration: \n%s", pformat(config))
     trainer.logger = validator.logger = logger
 
-    setup_handlers(
-        config,
-        model,
-        optimizer,
-        trainer,
-        validator,
-        lr_scheduler=lr_scheduler
-    )
+    setup_handlers(config, model, optimizer, trainer, validator, lr_scheduler=lr_scheduler)
 
     logger.info("Start training for %d epochs", config.max_epochs)
 
     # setup if done. let's run the training
-    if config.engine_type == 'ignite':
+    if config.engine_type == "ignite":
         trainer.run(
             dataloader_train,
             max_epochs=config.max_epochs,
             epoch_length=config.train_epoch_length,
         )
-    elif config.engine_type == 'monai':
+    elif config.engine_type == "monai":
         trainer.run()
     else:
         raise ValueError(f"Unknown engine type: {config.engine_type}. Supported types are 'ignite' and 'monai'.")
+
 
 # main entrypoint
 @hydra.main(version_base=None, config_path=".", config_name="config")

@@ -1,18 +1,12 @@
-import numbers
 import os
-from typing import Any, Iterable
+from typing import Any
 
 import torch.nn as nn
 from flatten_dict import flatten
 from hydra.utils import instantiate
 from ignite.contrib.engines import common
-from ignite.contrib.handlers.tensorboard_logger import OutputHandler
 from ignite.engine import Engine
-from ignite.handlers import ProgressBar, global_step_from_engine
-from monai.handlers import (CheckpointSaver, EarlyStopHandler,
-                            LrScheduleHandler, StatsHandler,
-                            TensorBoardImageHandler, TensorBoardStatsHandler,
-                            ValidationHandler, from_engine)
+
 from omegaconf import DictConfig, ListConfig
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LrScheduler
@@ -54,7 +48,7 @@ def setup_handlers(
     optimizer: Optimizer,
     trainer: Engine,
     validator: Engine,
-    lr_scheduler: LrScheduleHandler | None = None,
+    lr_scheduler: LrScheduler | None = None,
 ):
     """Setup all handlers for the trainer and validator."""
     writer = setup_tensorboard_writer(config, trainer, optimizer, validator)
@@ -80,27 +74,22 @@ def setup_handlers(
     # TODO: Customise tensorboard loggers more, to include e.g. epoch number. Should be fairly easy to unpack what common.setup_tb_logging does
 
 
-def dict2mdtable(d, key='Name', val='Value'):
-    rows = [f'| {key} | {val} |']
-    rows += ['|--|--|']
-    rows += [f'| {k} | {v} |' for k, v in d.items()]
+def dict2mdtable(d, key="Name", val="Value"):
+    rows = [f"| {key} | {val} |"]
+    rows += ["|--|--|"]
+    rows += [f"| {k} | {v} |" for k, v in d.items()]
     return "  \n".join(rows)
-
 
 
 def log_config(config: DictConfig | ListConfig, writer):
     # Note sure how to type annotate the logger here
-    """Log configuration to the logger, under 'text'.
-    """
+    """Log configuration to the logger, under 'text'."""
 
     flattened_config = flatten(config, reducer="dot", enumerate_types=(ListConfig, list))
 
     table = dict2mdtable(flattened_config, key="Hyperparameter", val="Value")
     # and finally, log a text scalar with a table
-    writer.add_text(
-        "hyperparams",
-        table
-    )
+    writer.add_text("hyperparams", table)
 
 
 def setup_tensorboard_writer(config: DictConfig | ListConfig, trainer, optimizers, evaluators):
@@ -150,13 +139,13 @@ def setup_train_handlers(
     validator: Engine,
     lr_scheduler: LrScheduler | None = None,
 ):
-    
+
     instantiate_kwargs = {
-        'lr_scheduler': lr_scheduler,
-        'validator': validator,
-        'summary_writer': writer,
-        'save_dir': os.path.join(writer.get_logdir(), "checkpoints"),
-        'save_dict': {
+        "lr_scheduler": lr_scheduler,
+        "validator": validator,
+        "summary_writer": writer,
+        "save_dir": os.path.join(writer.get_logdir(), "checkpoints"),
+        "save_dict": {
             "model": model,
             "optimizer": optimizer,
             "trainer": trainer,
@@ -167,11 +156,10 @@ def setup_train_handlers(
     }
 
     # TODO: Which of these shoold run only on rank 0?
-    for handler_config in config.handlers.get('train', []):
+    for handler_config in config.handlers.get("train", []):
         handler = instantiate_handler(handler_config, **instantiate_kwargs)
         handler.attach(trainer)
         # Does the handler stay in scope from here?
-
 
 
 def setup_validation_handlers(
@@ -181,17 +169,17 @@ def setup_validation_handlers(
     writer: SummaryWriter,
     validator: Engine,
 ):
-    
+
     instantiate_kwargs = {
-        'trainer': trainer,
-        'summary_writer': writer,
-        'save_dir': os.path.join(writer.get_logdir(), "checkpoints"),
-        'save_dict': {
+        "trainer": trainer,
+        "summary_writer": writer,
+        "save_dir": os.path.join(writer.get_logdir(), "checkpoints"),
+        "save_dict": {
             "model": model,
         },
-        'global_epoch_transform': get_epoch_function(trainer),
+        "global_epoch_transform": get_epoch_function(trainer),
     }
 
-    for handler_config in config.handlers.get('validation', []):
+    for handler_config in config.handlers.get("validation", []):
         handler = instantiate_handler(handler_config, **instantiate_kwargs)
         handler.attach(validator)

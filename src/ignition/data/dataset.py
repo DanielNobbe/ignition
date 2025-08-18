@@ -14,4 +14,3 @@ class TransformedDataset(Dataset):
     def __getitem__(self, index):
         dp = self.ds[index]
         return self.transform_fn(**dp)
-    

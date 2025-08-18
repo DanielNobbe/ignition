@@ -1,5 +1,3 @@
-
-
 """
 We want a dataset class, or something with another name, that
 can do the following:
@@ -31,8 +29,10 @@ We first make a class that can create and hold a single
 dataset, and return a dataloader for it.
 
 """
+
+
 class IgnitionDataset(ABC):
-    def __init__(self, config, name='train'):
+    def __init__(self, config, name="train"):
         self.name = name
         # if name in config, use it, otherwise assume there
         # is only one dataset
@@ -44,17 +44,17 @@ class IgnitionDataset(ABC):
     @abstractmethod
     def _setup_dataset(self):
         raise NotImplementedError("This method should be implemented in a subclass")
-    
+
     @abstractmethod
     def _setup_dataloader(self):
         raise NotImplementedError("This method should be implemented in a subclass")
-    
+
     def get_dataloader(self):
         return self.dataloader
-    
+
     def __len__(self):
         return len(self.dataset)
-    
+
 
 """
 A dataset class that can hold both train and validation datasets,
@@ -64,6 +64,8 @@ Note: We do not need to implement creating
 each individual dataset if we create the paired dataset directly.
 
 """
+
+
 class PairedDataset(ABC):
     def __init__(self, config):
         # assert len(config.dataset) == 2, "Config must contain exactly two datasets, a train and eval set. They can have any name."
@@ -72,29 +74,28 @@ class PairedDataset(ABC):
 
     def _find_train_key(self):
         for key in self.config.dataset.keys():
-            if 'train' in key.lower():
+            if "train" in key.lower():
                 return key
         # otherwise, return the first key
         warn("No 'train' key found in dataset config, using the first key.")
         return list(self.config.dataset.keys())[0]
-    
+
     def _find_eval_key(self):
         for key in self.config.dataset.keys():
-            if 'eval' in key.lower() or 'val' in key.lower():
+            if "eval" in key.lower() or "val" in key.lower():
                 return key
         # otherwise, return the first key
         warn("No 'eval' or 'val' key found in dataset config, using the second key.")
         return list(self.config.dataset.keys())[1]
-    
 
     @abstractmethod
     def get_train_dataloader(self):
         raise NotImplementedError("This method should be implemented in a subclass")
-    
+
     @abstractmethod
     def get_val_dataloader(self):
         raise NotImplementedError("This method should be implemented in a subclass")
-    
+
     @abstractmethod
     def _setup_datasets(self):
         """This method should be implemented in subclasses to set up the datasets."""
