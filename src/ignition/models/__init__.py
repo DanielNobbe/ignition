@@ -1,7 +1,7 @@
 from hydra.utils import instantiate
 
 from .torchvision import TorchVisionSegmentationModel
-
+from .base import IgnitionModel
 
 def setup_model(config):
     match config.model.type:
