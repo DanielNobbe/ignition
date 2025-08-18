@@ -37,6 +37,9 @@ def run(local_rank: int, config: Any):
             "Running this training script on multiple GPUs is not fully supported. To add support, look into adding rank-conditional logic for the handlers, metrics and dataloaders. And verify that all LR schedulers and optimizers support distributed training, e.g. by using `ignite.distributed.auto_optim`."
         )
 
+    if config.task != "segmentation":
+        raise ValueError(f"Task type {config.task} is not supported. Only 'segmentation' is currently implemented.")
+
     monai.config.print_config()
     # make a certain seed
     rank = idist.get_rank()
@@ -82,7 +85,6 @@ def run(local_rank: int, config: Any):
         trainer.run(
             dataloader_train,
             max_epochs=config.max_epochs,
-            epoch_length=config.train_epoch_length,
         )
     elif config.engine_type == "monai":
         trainer.run()
