@@ -1,0 +1,182 @@
+seed: 777 # random seed
+batch_size: 4 # train batch size
+eval_batch_size: 8 # evaluation batch size
+num_workers: 10 # number of subprocesses to use for data loading
+max_epochs: 400 # number of maximum epochs
+use_amp: false # use AMP (Automatic Mixed Precision)
+debug: false
+filename_prefix: training
+n_saved: 2
+save_every_iters: 1000
+output_dir: ./logs
+log_every_iters: 1
+num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
+# check how to ignore background? And if that needs to count towards clas no?
+backend: gloo  # or nccl
+task: segmentation # task type, only supports segmentation for now
+engine_type: monai # or monai or ignite
+roi_size: [64,64,8] # native roi size for model
+inferer:  # set to null to disable sliding window inference
+  _target_: monai.inferers.SlidingWindowInferer
+  roi_size: ${roi_size} # roi size for inference
+  sw_batch_size: ${eval_batch_size} # sliding window batch size
+  overlap: 0.25
+  mode: 'constant' # blending mode, can be 'constant' or 'gaussian'
+  sigma_scale: 0.125 # scale for gaussian blending, only used if mode is 'gaussian'
+  progress: true # show progress bar during inference
+model:
+  type: monai # model type, torchvision or monai
+  _target_: monai.networks.nets.SegResNet
+  spatial_dims: 3 # number of spatial dimensions, 2 for 2D, 3 for 3D
+  init_filters: 16 # initial number of filters
+  in_channels: 1 # number of input channels, 1 for grayscale
+  out_channels: ${num_classes} # number of output channels, should match num_classes -- is it including the background?
+  dropout_prob: 0.0 # dropout probability, 0.2 is good default
+  blocks_down: [1, 2, 2, 4] # default
+  blocks_up: [1, 1, 1]  # somehow they do another upscaling after this
+dataset:
+  type: MonaiSegmentationFolder # dataset type
+  images_dir: tests/test-data/liverv3_small/images # images path
+  labels_dir: tests/test-data/liverv3_small/labels # labels path
+  subset_size: 0.1
+  val_size: 0.2
+  cache_num: 20 # number of samples to cache in memory
+  transforms:  # only for monai datasets?
+    train:  # NOTE: Order matters! Settings are based on: https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/brats_segmentation_3d.ipynb
+      - type: EnsureChannelFirst
+        channel_dim: no_channel  # to automatically add channel dimension if not present
+      - type: Orientation
+        axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
+      - type: RandSpatialCrop
+        # roi_size: [224, 224, 64] # crop size for training
+        roi_size: ${roi_size} # crop size for training
+        random_size: false # use fixed size for cropping
+        random_center: false # use random center for cropping
+      - type: NormalizeIntensity
+        nonzero: true # normalize only non-zero values
+        channel_wise: true # normalize each channel separately
+        subtrahend: null # subtrahend for normalization
+        divisor: null # divisor for normalization
+    val:  # validation transforms
+      - type: EnsureChannelFirst  # not actually necessary for single-modal data
+        channel_dim: no_channel  # to automatically add channel dimension if not present
+      - type: Orientation
+        axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
+      - type: NormalizeIntensity
+        nonzero: true # normalize only non-zero values
+        channel_wise: true # normalize each channel separately
+        subtrahend: null # subtrahend for normalization
+        divisor: null # divisor for normalization
+post_transforms:
+  train: null  # could perhaps do the keeplargestconnectedcomponent
+  val:  # TODO: Check if model already does a softmax? may need to add activation here
+    _target_: monai.transforms.Compose
+    transforms:
+      - _target_: monai.transforms.Activationsd
+        keys: ['pred']  # keys to apply the activation to
+        softmax: true
+      - _target_: monai.transforms.AsDiscreted
+        keys: ['label', 'pred']  # keys to apply the discretization to
+        argmax: true  # apply argmax to the predictions
+        to_onehot: ${num_classes}  # convert to one-hot encoding
+        include_background: true  # include background class in the discretization
+loss:
+  type: monai # loss type
+  _target_: monai.losses.DiceLoss
+  squared_pred: true
+  to_onehot_y: true  # target is already one-hot encoded
+  sigmoid: true
+  include_background: true # include background class in the loss calculation
+lr_scheduler:
+  type: PolynomialLR # learning rate scheduler type
+  power: 0.8 # power for the polynomial decay
+optimizer:
+  type: SGD
+  lr: 0.4 # base learning rate for the optimizer
+  momentum: 0.4 # momentum for the optimizer
+  weight_decay: 0 #5.0e-4 # weight decay for the optimizer
+  nesterov: false # use Nesterov momentum
+metrics:
+  val:  # by default, the first metric is used as the 'key' metric
+    - _target_: monai.handlers.MeanDice
+      _key_: mean_dice
+      include_background: true
+      output_transform: 
+        _target_: monai.handlers.from_engine
+        keys: ['pred', 'label']  # keys to extract from the output
+    - _target_: monai.handlers.MeanIoUHandler
+      _key_: mean_iou
+      include_background: true
+      output_transform: 
+        _target_: monai.handlers.from_engine
+        keys: ['pred', 'label']  # keys to extract from the output
+  train:
+    - _target_: monai.handlers.IgniteMetricHandler
+      _key_: train_loss
+      _requires_: loss_fn
+      output_transform:
+        _target_: monai.handlers.from_engine
+        keys: ['pred', 'label']  # keys to extract from the output, not sure why we can't just use 'loss' here
+  val_key_metric_name: ${metrics.val[0]._key_} # name of the key metric for validation, used for early stopping and checkpointing
+  train_key_metric_name: ${metrics.train[0]._key_} # name of the key metric for training, used for logging
+handlers:
+  train:
+    - _target_: monai.handlers.CheckpointSaver
+      _convert_: partial
+      _requires_: [save_dict, save_dir]
+      save_final: true
+      final_filename: "final_model.pth"
+      save_key_metric: false
+      epoch_level: true
+      save_interval: 5
+      n_saved: 5
+    - _target_:  monai.handlers.LrScheduleHandler
+      _requires_: lr_scheduler
+      print_lr: true
+      epoch_level: false
+    - _target_: monai.handlers.ValidationHandler
+      _requires_: validator
+      interval: 1 # validate every epoch
+      epoch_level: true # validate at the end of each epoch
+      exec_at_start: true
+    - _target_: monai.handlers.StatsHandler
+      iteration_log: true
+      epoch_log: false
+      tag_name: "train loss"
+    - _target_: monai.handlers.TensorBoardStatsHandler
+      _requires_: [summary_writer]
+      iteration_log: true
+      epoch_log: true
+      tag_name: "Train Loss"
+    - _target_: ignite.handlers.ProgressBar
+      desc: "Training"
+    # NOTE: ignite also offers a terminate on nan handler, could be interesting
+  validation:
+
+    - _target_: monai.handlers.CheckpointSaver
+      _convert_: partial
+      _requires_: [save_dict, save_dir]
+      save_final: false
+      save_key_metric: true
+      epoch_level: true
+      save_interval: 1
+      key_metric_n_saved: 1
+      key_metric_greater_or_equal: true
+    - _target_: monai.handlers.StatsHandler
+      iteration_log: false
+      epoch_log: true
+      tag_name: "Validation"
+    - _target_: monai.handlers.TensorBoardImageHandler
+      _requires_: summary_writer
+      epoch_level: true
+      interval: 1
+      index: 0
+      frame_dim: -1
+      batch_transform:
+        _target_: monai.handlers.from_engine
+        keys: ['image', 'label']  # keys to extract from the batch
+      output_transform:
+        _target_: monai.handlers.from_engine
+        keys: ['pred']  # keys to extract from the output
+    
+      
