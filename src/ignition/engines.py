@@ -1,5 +1,6 @@
 import logging
 from typing import Any, Dict, Union
+from warnings import warn
 
 import ignite.distributed as idist
 import torch
@@ -30,6 +31,7 @@ def setup_trainer(
 
     if config.use_amp:
         scaler = GradScaler(enabled=config.use_amp)
+        warn("AMP may not be fully supported in Ignition.")
     else:
         scaler = None
 

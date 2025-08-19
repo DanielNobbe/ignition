@@ -4,20 +4,15 @@ eval_batch_size: 8 # evaluation batch size
 num_workers: 10 # number of subprocesses to use for data loading
 max_epochs: 400 # number of maximum epochs
 use_amp: false # use AMP (Automatic Mixed Precision)
-debug: false
-filename_prefix: training
-n_saved: 2
-save_every_iters: 1000
-patience: 5
 output_dir: ./logs
+output_prefix: training
 log_every_iters: 1
-accumulation_steps: 1 # parameter for gradient accumulation
 eval_every_epochs: 10 # evaluate every n epochs
 num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
-backend: gloo
+backend: gloo  # or nccl
 task: segmentation # task type
 engine_type: monai # or monai or ignite
-roi_size: [224, 224, 64]] # native roi size for model
+roi_size: [224, 224, 64] # native roi size for model
 inferer: # set to null to disable sliding window inference
   _target_: monai.inferers.SlidingWindowInferer
   roi_size: ${roi_size} # roi size for inference
@@ -170,16 +165,16 @@ handlers:
       epoch_level: false
     - _target_: monai.handlers.ValidationHandler
       _requires_: validator
-      interval: 1 # validate every epoch
+      interval: ${eval_every_epochs} # validate every epoch
       epoch_level: true # validate at the end of each epoch
       exec_at_start: true
     - _target_: monai.handlers.StatsHandler
-      iteration_log: true
+      iteration_log: ${log_every_iters}
       epoch_log: false
       tag_name: "train loss"
     - _target_: monai.handlers.TensorBoardStatsHandler
       _requires_: [summary_writer]
-      iteration_log: true
+      iteration_log: ${log_every_iters}
       epoch_log: true
       tag_name: "Train Loss"
     - _target_: ignite.handlers.ProgressBar

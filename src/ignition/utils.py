@@ -101,7 +101,7 @@ def setup_output_dir(config: Any, rank: int) -> Path:
     output_dir = config.output_dir
     if rank == 0:
         now = datetime.now().strftime("%Y%m%d-%H%M%S")
-        name = f"{now}-backend-{config.backend}"
+        name = f"{config.output_prefix}_{now}-backend-{config.backend}"
         path = Path(config.output_dir, name)
         path.mkdir(parents=True, exist_ok=True)
         output_dir = path.as_posix()

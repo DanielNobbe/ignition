@@ -2,16 +2,13 @@ seed: 777 # random seed
 batch_size: 4 # train batch size
 eval_batch_size: 8 # evaluation batch size
 num_workers: 10 # number of subprocesses to use for data loading
-max_epochs: 400 # number of maximum epochs
+max_epochs: 800 # number of maximum epochs
 use_amp: false # use AMP (Automatic Mixed Precision)
-debug: false
-filename_prefix: training
-n_saved: 2
-save_every_iters: 1000
 output_dir: ./logs
+output_prefix: toy_training
 log_every_iters: 1
+eval_every_epochs: 1
 num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
-# check how to ignore background? And if that needs to count towards clas no?
 backend: gloo  # or nccl
 task: segmentation # task type, only supports segmentation for now
 engine_type: monai # or monai or ignite
@@ -38,7 +35,7 @@ dataset:
   type: MonaiSegmentationFolder # dataset type
   images_dir: tests/test-data/liverv3_small/images # images path
   labels_dir: tests/test-data/liverv3_small/labels # labels path
-  subset_size: 0.1
+  subset_size: null
   val_size: 0.2
   cache_num: 20 # number of samples to cache in memory
   transforms:  # only for monai datasets?
@@ -92,8 +89,8 @@ lr_scheduler:
   power: 0.8 # power for the polynomial decay
 optimizer:
   type: SGD
-  lr: 0.4 # base learning rate for the optimizer
-  momentum: 0.4 # momentum for the optimizer
+  lr: 0.8 # base learning rate for the optimizer
+  momentum: 0.2 # momentum for the optimizer
   weight_decay: 0 #5.0e-4 # weight decay for the optimizer
   nesterov: false # use Nesterov momentum
 metrics:
@@ -136,23 +133,22 @@ handlers:
       epoch_level: false
     - _target_: monai.handlers.ValidationHandler
       _requires_: validator
-      interval: 1 # validate every epoch
+      interval: ${eval_every_epochs} # validate every epoch
       epoch_level: true # validate at the end of each epoch
       exec_at_start: true
     - _target_: monai.handlers.StatsHandler
-      iteration_log: true
+      iteration_log: ${log_every_iters}
       epoch_log: false
       tag_name: "train loss"
     - _target_: monai.handlers.TensorBoardStatsHandler
       _requires_: [summary_writer]
-      iteration_log: true
+      iteration_log: ${log_every_iters}
       epoch_log: true
       tag_name: "Train Loss"
     - _target_: ignite.handlers.ProgressBar
       desc: "Training"
     # NOTE: ignite also offers a terminate on nan handler, could be interesting
   validation:
-
     - _target_: monai.handlers.CheckpointSaver
       _convert_: partial
       _requires_: [save_dict, save_dir]
