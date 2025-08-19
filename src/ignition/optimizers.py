@@ -14,4 +14,6 @@ def setup_optimizer(parameters, config):
             nesterov=config.optimizer.nesterov,
         )
     else:
-        raise ValueError(f"Optimizer type {config.optimizer.type} is not supported. It can be implemented in optimizers.py")
+        raise ValueError(
+            f"Optimizer type {config.optimizer.type} is not supported. It can be implemented in optimizers.py"
+        )

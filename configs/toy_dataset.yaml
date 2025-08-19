@@ -2,24 +2,24 @@ seed: 777 # random seed
 batch_size: 4 # train batch size
 eval_batch_size: 8 # evaluation batch size
 num_workers: 10 # number of subprocesses to use for data loading
-max_epochs: 400 # number of maximum epochs
+max_epochs: 800 # number of maximum epochs
 use_amp: false # use AMP (Automatic Mixed Precision)
 output_dir: ./logs
-output_prefix: training
+output_prefix: toy_training
 log_every_iters: 1
-eval_every_epochs: 10 # evaluate every n epochs
+eval_every_epochs: 1
 num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
 backend: gloo  # or nccl
-task: segmentation # task type
+task: segmentation # task type, only supports segmentation for now
 engine_type: monai # or monai or ignite
-roi_size: [224, 224, 64] # native roi size for model
-inferer: # set to null to disable sliding window inference
+roi_size: [64,64,8] # native roi size for model
+inferer:  # set to null to disable sliding window inference
   _target_: monai.inferers.SlidingWindowInferer
   roi_size: ${roi_size} # roi size for inference
   sw_batch_size: ${eval_batch_size} # sliding window batch size
   overlap: 0.25
   mode: 'constant' # blending mode, can be 'constant' or 'gaussian'
-  sigma_scale: 0.125 # scale for gaussian blending
+  sigma_scale: 0.125 # scale for gaussian blending, only used if mode is 'gaussian'
   progress: true # show progress bar during inference
 model:
   type: monai # model type, torchvision or monai
@@ -27,72 +27,46 @@ model:
   spatial_dims: 3 # number of spatial dimensions, 2 for 2D, 3 for 3D
   init_filters: 16 # initial number of filters
   in_channels: 1 # number of input channels, 1 for grayscale
-  out_channels: ${num_classes} # number of output channels
+  out_channels: ${num_classes} # number of output channels, should match num_classes -- is it including the background?
   dropout_prob: 0.0 # dropout probability, 0.2 is good default
   blocks_down: [1, 2, 2, 4] # default
   blocks_up: [1, 1, 1]  # somehow they do another upscaling after this
 dataset:
   type: MonaiSegmentationFolder # dataset type
-  images_dir: data/medicaldecathlon/Task03_Liver/imagesTr # images path
-  labels_dir: data/medicaldecathlon/Task03_Liver/labelsTr # labels path
-  subset_size: 0.1
+  images_dir: tests/test-data/liverv3_small/images # images path
+  labels_dir: tests/test-data/liverv3_small/labels # labels path
+  subset_size: null
   val_size: 0.2
   cache_num: 20 # number of samples to cache in memory
   transforms:  # only for monai datasets?
     train:  # NOTE: Order matters! Settings are based on: https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/brats_segmentation_3d.ipynb
-      # - type: ScaleIntensity
       - type: EnsureChannelFirst
         channel_dim: no_channel  # to automatically add channel dimension if not present
       - type: Orientation
         axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
-      - type: Spacing
-        pixdim: [1.0, 1.0, 1.0] # pixel dimensions for the image
-        mode: 'bilinear' # interpolation mode for resizing, can also be both 'nearest' and 'bilinear'
-        align_corners: null # align corners for the interpolation, set to null for default behavior
       - type: RandSpatialCrop
         # roi_size: [224, 224, 64] # crop size for training
         roi_size: ${roi_size} # crop size for training
         random_size: false # use fixed size for cropping
         random_center: false # use random center for cropping
-      - type: RandFlip
-        prob: 0.5 # probability of flipping the image
-        spatial_axis: 0 # axes to flip the image
-      - type: RandFlip
-        prob: 0.5 # probability of flipping the image
-        spatial_axis: 1 # axes to flip the image
-      - type: RandFlip
-        prob: 0.5 # probability of flipping the image
-        spatial_axis: 2 # axes to flip the image
       - type: NormalizeIntensity
         nonzero: true # normalize only non-zero values
         channel_wise: true # normalize each channel separately
         subtrahend: null # subtrahend for normalization
         divisor: null # divisor for normalization
-      - type: RandScaleIntensity
-        prob: 1.0 # probability of scaling the intensity
-        # 0.1 means beween 0.9 and 1.1
-        factors: 0.1 # scaling factors for the intensity
-      - type: RandShiftIntensity
-        prob: 1.0 # probability of shifting the intensity
-        # 0.1 means beween -0.1 and 0.1
-        offsets: 0.1 # shifting offsets for the intensity
     val:  # validation transforms
       - type: EnsureChannelFirst  # not actually necessary for single-modal data
         channel_dim: no_channel  # to automatically add channel dimension if not present
       - type: Orientation
         axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
-      - type: Spacing 
-        pixdim: [1.0, 1.0, 1.0] # pixel dimensions for the image
-        mode: 'bilinear' # interpolation mode for resizing, can also be both 'nearest' and 'bilinear'
-        align_corners: null # align corners for the interpolation, set to null for default behavior
       - type: NormalizeIntensity
         nonzero: true # normalize only non-zero values
         channel_wise: true # normalize each channel separately
         subtrahend: null # subtrahend for normalization
         divisor: null # divisor for normalization
 post_transforms:
-  train: null  # option: keeplargestconnectedcomponent
-  val:
+  train: null  # could perhaps do the keeplargestconnectedcomponent
+  val:  # TODO: Check if model already does a softmax? may need to add activation here
     _target_: monai.transforms.Compose
     transforms:
       - _target_: monai.transforms.Activationsd
@@ -115,8 +89,8 @@ lr_scheduler:
   power: 0.8 # power for the polynomial decay
 optimizer:
   type: SGD
-  lr: 0.4 # base learning rate for the optimizer
-  momentum: 0.4 # momentum for the optimizer
+  lr: 0.8 # base learning rate for the optimizer
+  momentum: 0.2 # momentum for the optimizer
   weight_decay: 0 #5.0e-4 # weight decay for the optimizer
   nesterov: false # use Nesterov momentum
 metrics:
@@ -133,12 +107,6 @@ metrics:
       output_transform: 
         _target_: monai.handlers.from_engine
         keys: ['pred', 'label']  # keys to extract from the output
-    # or, custom implemented metrics:
-    # type: SegmentationMetrics # evaluation metrics type
-    # iou: true # use IoU metric
-    # miou: true # use mean IoU metric
-    # background_index: 0 # ignore background class in IoU calculation, set to negative/null to disable
-    # best_metric_name: mIoU # name of the best metric to track for early stopping and checkpointing
   train:
     - _target_: monai.handlers.IgniteMetricHandler
       _key_: train_loss
@@ -181,15 +149,6 @@ handlers:
       desc: "Training"
     # NOTE: ignite also offers a terminate on nan handler, could be interesting
   validation:
-    - _target_: monai.handlers.EarlyStopHandler
-      _requires_: trainer
-      score_function: 
-        _target_: monai.handlers.utils.stopping_fn_from_metric
-        metric_name: ${metrics.val_key_metric_name}
-      patience: 5
-      min_delta: 0.0001
-      cumulative_delta: false
-      epoch_level: true
     - _target_: monai.handlers.CheckpointSaver
       _convert_: partial
       _requires_: [save_dict, save_dir]
@@ -200,11 +159,6 @@ handlers:
       key_metric_n_saved: 1
       key_metric_greater_or_equal: true
     - _target_: monai.handlers.StatsHandler
-      iteration_log: false
-      epoch_log: true
-      tag_name: "Validation"
-    - _target_: monai.handlers.TensorBoardStatsHandler
-      _requires_: [summary_writer, global_epoch_transform]
       iteration_log: false
       epoch_log: true
       tag_name: "Validation"

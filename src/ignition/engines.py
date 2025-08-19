@@ -1,24 +1,23 @@
-from typing import Any, Dict, Union, Callable
+import logging
+from typing import Any, Dict, Union
+from warnings import warn
 
 import ignite.distributed as idist
 import torch
-from ignite.engine import DeterministicEngine, Engine, Events, create_supervised_trainer, create_supervised_evaluator
+from hydra.utils import instantiate
+from ignite.engine import DeterministicEngine, Engine, create_supervised_evaluator, create_supervised_trainer
 from ignite.metrics import Metric
-from torch.cuda.amp import autocast, GradScaler
+from monai.engines import SupervisedEvaluator, SupervisedTrainer
+from torch.amp import GradScaler
 from torch.nn import Module
 from torch.optim import Optimizer
-from torch.utils.data import DistributedSampler, Sampler
-from ignition.models import IgnitionModel
+
 from ignition.datasets import PairedDataset
+from ignition.models import IgnitionModel
 from ignition.utils import split_dict_at_index
 
-from monai.engines import SupervisedTrainer, SupervisedEvaluator
-
-from hydra.utils import instantiate
-
-import logging
-
 logger = logging.getLogger(__name__)
+
 
 def setup_trainer(
     config: Any,
@@ -32,11 +31,12 @@ def setup_trainer(
 
     if config.use_amp:
         scaler = GradScaler(enabled=config.use_amp)
+        warn("AMP may not be fully supported in Ignition.")
     else:
         scaler = None
 
     match config.engine_type:
-        case 'ignite':
+        case "ignite":
             trainer = create_supervised_trainer(
                 model,
                 optimizer,
@@ -47,17 +47,13 @@ def setup_trainer(
                 non_blocking=True,
                 scaler=scaler,
                 model_transform=model.get_model_transform(),
-                output_transform=model.get_train_output_transform()
+                output_transform=model.get_train_output_transform(),
             )
             for name, metric in (metrics or {}).items():
                 metric.attach(trainer, name)
-        case 'monai':
+        case "monai":
             # TODO: Add option to use slidingwindow inferer during training
             key_metric, other_metrics = split_dict_at_index(metrics, 1)
-
-            # NOTE: it is odd, the metrics entered here should be ignite metrics,
-            # but the MONAI metrics do not inherit from ignite.metrics.Metric
-            # --> right, this doesn't actually work
 
             trainer = SupervisedTrainer(
                 device=device,
@@ -66,14 +62,10 @@ def setup_trainer(
                 network=model,
                 optimizer=optimizer,
                 loss_function=loss_fn,
-                # prepare_batch=dataset.get_prepare_batch(),
                 non_blocking=True,
-                # model_transform=model.get_model_transform(),
-                # output_transform=model.get_train_output_transform()
                 key_train_metric=key_metric,
                 additional_metrics=other_metrics,
             )
-
 
     return trainer
 
@@ -84,12 +76,13 @@ def setup_evaluator(
     metrics: Dict[str, Metric],
     device: Union[str, torch.device],
     dataset: PairedDataset,
+    name: str = "val",
 ) -> Engine:
 
-# TODO: Move metrics declaration into here?
+    # TODO: Move metrics declaration into here?
 
     match config.engine_type:
-        case 'ignite':
+        case "ignite":
             evaluator = create_supervised_evaluator(
                 model,
                 metrics=metrics,
@@ -100,22 +93,20 @@ def setup_evaluator(
             )
             for name, metric in metrics.items():
                 metric.attach(evaluator, name)
-        case 'monai':
+        case "monai":
 
             key_metric, other_metrics = split_dict_at_index(metrics, 1)
+            # relies on the fact that dicts are ordered in Python 3.7+
 
             evaluator = SupervisedEvaluator(
                 device=device,
                 val_data_loader=dataset.get_val_dataloader(),
                 network=model,
-                inferer=instantiate(config.inferer) if config.get('inferer') else None,
-                # prepare_batch=dataset.get_prepare_batch(),
+                inferer=instantiate(config.inferer) if config.get("inferer") else None,
+                postprocessing=instantiate(config.post_transforms.get(name)),
                 non_blocking=True,
                 key_val_metric=key_metric,
                 additional_metrics=other_metrics,
             )
-    # TODO: maybe we need to use the postprocessing arg for the transform?
-
-
 
     return evaluator
