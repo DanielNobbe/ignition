@@ -124,7 +124,9 @@ def instantiate_handler(handler_config: DictConfig | ListConfig, **kwargs) -> An
 
         # If the handler requires some parameters, instantiate it with them
         required_args = {arg: kwargs[arg] for arg in handler_requires_arg}
-        return instantiate(handler_config, **required_args)
+        return instantiate(handler_config, _convert_="all", **required_args)
+        # _convert_="all" is needed here to ensure that the required args are all passed as their inherent types.
+        # This is needed because ignite's tree_apply function does not handle dictconfig objects as dicts..
     else:
         # Otherwise, instantiate it without any parameters
         return instantiate(handler_config)
@@ -160,6 +162,16 @@ def setup_train_handlers(
         handler = instantiate_handler(handler_config, **instantiate_kwargs)
         handler.attach(trainer)
         # Does the handler stay in scope from here?
+
+    if config.get("resume") is not None:
+        resume_path = config.resume_from_checkpoint
+        instantiate_kwargs["load_path"] = resume_path
+        instantiate_kwargs["load_dict"] = instantiate_kwargs["save_dict"]
+
+        handler = instantiate_handler(config.handlers.checkpoint_loader, **instantiate_kwargs)
+        printer.info("Resuming from checkpoint: %s", resume_path)
+        handler(trainer)
+        # Needs to run only once, at beginning
 
 
 def setup_validation_handlers(

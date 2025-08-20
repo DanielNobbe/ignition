@@ -107,6 +107,12 @@ def run(local_rank: int, config: Any):
     config_name="config.yaml",
 )
 def main(cfg: DictConfig):
+
+    if cfg.get("resume") is not None:
+        
+        cfg = resume_from(cfg.resume)
+        print(f"Resuming from {cfg.resume}")
+
     config = setup_config(cfg)
     with idist.Parallel(config.backend) as p:
         p.run(run, config=config)
