@@ -29,7 +29,9 @@ except ImportError:
     from torch.optim.lr_scheduler import _LRScheduler as PyTorchLRScheduler
 
 
-def run(local_rank: int, config: Any):
+def train(config: DictConfig):
+    """Main training function.
+    Performs training logic."""
 
     world_size = idist.get_world_size()
     if world_size > 1:
@@ -91,9 +93,19 @@ def run(local_rank: int, config: Any):
     else:
         raise ValueError(f"Unknown engine type: {config.engine_type}. Supported types are 'ignite' and 'monai'.")
 
+def run(local_rank: int, config: Any):
+    if config.mode == "train":
+        train(config)
+    else:
+        raise ValueError(f"Unknown mode: {config.mode}. Supported modes are 'train'.")
+
 
 # main entrypoint
-@hydra.main(version_base=None, config_path=".", config_name="config")
+@hydra.main(
+    version_base=None,
+    config_path="configs",
+    config_name="config.yaml",
+)
 def main(cfg: DictConfig):
     config = setup_config(cfg)
     with idist.Parallel(config.backend) as p:

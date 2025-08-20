@@ -1,3 +1,5 @@
+mode: train
+debug: false
 seed: 777 # random seed
 batch_size: 4 # train batch size
 eval_batch_size: 8 # evaluation batch size

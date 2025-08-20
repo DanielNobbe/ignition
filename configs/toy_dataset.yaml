@@ -1,3 +1,5 @@
+mode: train
+debug: false
 seed: 777 # random seed
 batch_size: 4 # train batch size
 eval_batch_size: 8 # evaluation batch size
@@ -155,7 +157,7 @@ handlers:
       save_final: false
       save_key_metric: true
       epoch_level: true
-      save_interval: 1
+      save_interval: 5
       key_metric_n_saved: 1
       key_metric_greater_or_equal: true
     - _target_: monai.handlers.StatsHandler
@@ -174,5 +176,8 @@ handlers:
       output_transform:
         _target_: monai.handlers.from_engine
         keys: ['pred']  # keys to extract from the output
-    
+  checkpoint_loader:
+    _target_: monai.handlers.CheckpointLoader
+    _convert_: all
+    _requires_: [load_dict, load_path]
       
