@@ -5,6 +5,7 @@ from warnings import warn
 from ignite.utils import convert_tensor
 from monai.data import CacheDataset, DataLoader
 from monai.transforms import (
+    AsDiscreted,
     Compose,
     EnsureChannelFirstd,
     EnsureTyped,
@@ -17,6 +18,7 @@ from monai.transforms import (
     RandSpatialCropd,
     ScaleIntensityd,
     Spacingd,
+    LabelFilterd
 )
 
 from .base import PairedDataset
@@ -157,6 +159,18 @@ class SegmentationFolder(PairedDataset):
         # TODO: Move to hydra instantiate
         # Selected transforms are based on https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/brats_segmentation_3d.ipynb
         match transform.type:
+            case "LabelFilter":
+                return LabelFilterd(
+                    keys=[self.label_key],
+                    applied_labels=transform.get("include_classes", 0),
+                )
+            case "AsDiscrete":
+                return AsDiscreted(
+                    keys=[self.label_key],
+                    argmax=transform.get("argmax", True),
+                    to_onehot=transform.get("to_onehot", None),
+                    include_background=transform.get("include_background", True),
+                )
             case "RandSpatialCrop":
                 return RandSpatialCropd(
                     keys=[self.image_key, self.label_key],
