@@ -21,3 +21,17 @@ torchrun \
 The main script can also be ran from python, or through vscode debugging, see .vscode/launch.json.
 
 Note that we do not currently support multi-gpu training, this requires some tweaks to how the MONAI handlers are set up (e.g., logging should only be done from rank 0). 
+
+
+## Resume interrupted run
+To resume from an interrupted run, the train checkpoint needs to be loaded. Make sure you have a train checkpointer set up in your config. 
+
+Then use the following command:
+```
+torchrun \
+  --nproc_per_node 1 \
+  main.py +resume=logs/toy_training_20250820-111755-backend-gloo
+
+```
+
+Note that this produces a new log directory for the new run, but the config file will reference the old run.
