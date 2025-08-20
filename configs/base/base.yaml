@@ -1,0 +1,60 @@
+#@package _global_
+handlers:
+  train:  # need to copy these when overriding
+  # TODO: Set up to merge these rather than replace
+    - _target_: monai.handlers.CheckpointSaver
+      _convert_: partial
+      _requires_: [save_dict, save_dir]
+      save_final: true
+      final_filename: "final_model.pth"
+      save_key_metric: false
+      epoch_level: true
+      save_interval: 5
+      n_saved: 5
+    - _target_: monai.handlers.ValidationHandler
+      _requires_: validator
+      interval: ${eval_every_epochs} # validate every epoch
+      epoch_level: true # validate at the end of each epoch
+      exec_at_start: true
+    - _target_: monai.handlers.StatsHandler
+      iteration_log: ${log_every_iters}
+      epoch_log: false
+      tag_name: "train loss"
+    - _target_: monai.handlers.TensorBoardStatsHandler
+      _requires_: [summary_writer]
+      iteration_log: ${log_every_iters}
+      epoch_log: true
+      tag_name: "Train Loss"
+    - _target_: ignite.handlers.ProgressBar
+      desc: "Training"
+  validation:
+    - _target_: monai.handlers.CheckpointSaver
+      _convert_: partial
+      _requires_: [save_dict, save_dir]
+      save_final: false
+      save_key_metric: true
+      epoch_level: true
+      save_interval: 5
+      key_metric_n_saved: 1
+      key_metric_greater_or_equal: true
+    - _target_: monai.handlers.StatsHandler
+      iteration_log: false
+      epoch_log: true
+      tag_name: "Validation"
+    - _target_: monai.handlers.TensorBoardImageHandler
+      _requires_: summary_writer
+      epoch_level: true
+      interval: 1
+      index: 0
+      frame_dim: -1
+      batch_transform:
+        _target_: monai.handlers.from_engine
+        keys: ['image', 'label']  # keys to extract from the batch
+      output_transform:
+        _target_: monai.handlers.from_engine
+        keys: ['pred']  # keys to extract from the output
+  checkpoint_loader:
+    _target_: monai.handlers.CheckpointLoader
+    _convert_: all
+    _requires_: [load_dict, load_path]
+  
