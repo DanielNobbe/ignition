@@ -144,7 +144,7 @@ def setup_train_handlers(
         "lr_scheduler": lr_scheduler,
         "validator": validator,
         "summary_writer": writer,
-        "save_dir": os.path.join(writer.get_logdir(), "checkpoints"),
+        "save_dir": os.path.join(writer.get_logdir(), "checkpoints/train/"),
         "save_dict": {
             "model": model,
             "optimizer": optimizer,
@@ -173,7 +173,7 @@ def setup_validation_handlers(
     instantiate_kwargs = {
         "trainer": trainer,
         "summary_writer": writer,
-        "save_dir": os.path.join(writer.get_logdir(), "checkpoints"),
+        "save_dir": os.path.join(writer.get_logdir(), "checkpoints/val"),
         "save_dict": {
             "model": model,
         },
