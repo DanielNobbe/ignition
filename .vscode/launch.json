@@ -11,6 +11,8 @@
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
+            "args": "--config-dir configs --config-name toy_dataset.yaml",
+            "justMyCode": false,
             "env": {
                 "SLURM_NTASKS": "1",
             }
