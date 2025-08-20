@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from warnings import warn
 
 from ignite.utils import convert_tensor
