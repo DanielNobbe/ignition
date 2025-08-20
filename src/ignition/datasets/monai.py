@@ -31,6 +31,20 @@ class SegmentationFolder(PairedDataset):
     image_key = "image"
     label_key = "label"
 
+    image_extensions = [
+        ".nii",
+        ".nii.gz",
+    ]
+
+    @staticmethod
+    def _get_full_extension(file: str) -> str:
+        return ''.join(Path(file).suffixes)
+
+    def _filter_image_files(self, files: list[str]) -> list[str]:
+        """Filter image files based on the defined extensions."""
+        return [f for f in files if self._get_full_extension(f) in self.image_extensions]
+
+
     def _setup_datasets(self):
         # create a list of all files and label files in these directories
         # TODO: Implement another class that does not need to keep
@@ -39,16 +53,17 @@ class SegmentationFolder(PairedDataset):
 
         self.images_dir = self.config.dataset.images_dir
 
-        image_files = os.listdir(self.config.dataset.images_dir)
+        image_files = self._filter_image_files(os.listdir(self.config.dataset.images_dir))
 
         if not self._verify_all_same_ext(image_files):
-            raise ValueError(f"Not all image files in directory {self.config.images_dir} have the same extension.")
+            raise ValueError(f"Not all image files in directory {self.config.dataset.images_dir} have the same extension.")
 
         self.labels_dir = self.config.dataset.labels_dir
-        label_files = os.listdir(self.config.dataset.labels_dir)
+        label_files = self._filter_image_files(os.listdir(self.config.dataset.labels_dir))
 
         assert len(image_files) > 0, f"No image files found in directory {self.config.dataset.images_dir}."
         assert len(label_files) > 0, f"No label files found in directory {self.config.dataset.labels_dir}."
+
 
         if not self._verify_all_same_ext(label_files):
             raise ValueError(f"Not all label files in directory {self.config.labels_dir} have the same extension.")
