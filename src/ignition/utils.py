@@ -2,6 +2,7 @@ import logging
 import numbers
 from datetime import datetime
 from logging import Logger, getLogger
+from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Any, Mapping, Optional, Union
 
@@ -14,11 +15,25 @@ from omegaconf import OmegaConf
 
 printer = getLogger(__name__)
 
+def handle_num_workers(config):
+    """Set num_workers in config based on the number of available CPUs."""
+    if config.get("num_workers") is None:
+        num_cores = cpu_count()
+        if num_cores is None:
+            num_cores = 1
+        num_workers = num_cores // idist.get_world_size()
+        if num_workers == 0:
+            num_workers = 1
+        config.num_workers = num_workers
+        printer.info(f"Setting num_workers in config based on available CPUs ({num_workers}).")
+
 
 def setup_config(config):
     OmegaConf.set_struct(config, False)
 
     config.backend = config.get("backend", None)
+
+    handle_num_workers(config)
 
     return config
 
