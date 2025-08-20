@@ -222,5 +222,8 @@ handlers:
       output_transform:
         _target_: monai.handlers.from_engine
         keys: ['pred']  # keys to extract from the output
-    
+  checkpoint_loader:
+    _target_: monai.handlers.CheckpointLoader
+    _convert_: all
+    _requires_: [load_dict, load_path]
       
