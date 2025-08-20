@@ -10,7 +10,7 @@ import torch
 from ignite.engine import Engine
 from ignite.handlers import Checkpoint
 from ignite.utils import setup_logger
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, DictConfig
 
 printer = getLogger(__name__)
 
@@ -148,3 +148,41 @@ def get_epoch_function(engine: Engine) -> int:
         return engine.state.epoch
 
     return get_epoch
+
+
+def find_last_checkpoint(checkpoint_dir: Union[str, Path]) -> Path | None:
+    """Find the last checkpoint file in the given directory."""
+    if isinstance(checkpoint_dir, str):
+        checkpoint_dir = Path(checkpoint_dir)
+
+    if not checkpoint_dir.exists():
+        return None
+
+    checkpoints = list(checkpoint_dir.glob("*.pt")) + list(checkpoint_dir.glob("*.pth"))
+    if not checkpoints:
+        return None
+
+    # Sort by modification time, descending
+    checkpoints.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+    return checkpoints[0] if checkpoints else None
+
+
+def resume_from(resume_path: str, config_name: str = "config-lock.yaml") -> DictConfig:
+    """Resume configuration from a checkpoint file."""
+    if not Path(resume_path).exists():
+        raise FileNotFoundError(f"Resume path does not exist: {resume_path}")
+
+    resume_yaml = Path(resume_path) / config_name
+    if not resume_yaml.exists():
+        raise FileNotFoundError(f"Configuration file does not exist: {resume_yaml}")
+    
+    last_checkpoint = find_last_checkpoint(Path(resume_path) / "checkpoints/train")  # TODO: Make this path configurable or global var
+    if last_checkpoint is None:
+        raise FileNotFoundError(f"No checkpoint found in {resume_path}")
+    printer.info(f"Resuming from checkpoint: {last_checkpoint}")
+    
+    config = OmegaConf.load(resume_yaml)
+    config.resume = resume_path
+    config.resume_from_checkpoint = last_checkpoint
+
+    return config
