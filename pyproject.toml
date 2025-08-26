@@ -13,9 +13,11 @@ dependencies = [
     "isort>=6.0.1",
     "jupyter>=1.1.1",
     "monai[einops,gdown,h5py,huggingface-hub,imagecodecs,itk,matplotlib,mlflow,nibabel,ninja,optuna,pandas,pillow,pydicom,tifffile,tqdm,transformers]>=1.5.0",
+    "moviepy>=2.2.1",
     "pytest>=8.4.1",
     "pytorch-ignite>=0.4.8",
     "tensorboard>=2.20.0",
+    "tensorboardx>=2.6.4",
     "torch>=1.10.2",
     "torchvision>=0.11.3",
 ]
