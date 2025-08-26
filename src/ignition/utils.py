@@ -11,6 +11,9 @@ import torch
 from ignite.engine import Engine
 from ignite.handlers import Checkpoint
 from ignite.utils import setup_logger
+from monai.transforms import Transform
+from monai.handlers import from_engine
+from monai.config import KeysCollection
 from omegaconf import OmegaConf, DictConfig
 
 printer = getLogger(__name__)
@@ -201,3 +204,32 @@ def resume_from(resume_path: str, config_name: str = "config-lock.yaml") -> Dict
     config.resume_from_checkpoint = last_checkpoint
 
     return config
+
+
+def from_engine_with_transform(keys: KeysCollection, transform: Transform, first: bool = False):
+    """Utility function based on `monai.handlers.from_engine` that includes a transform.
+    
+    Transforms, specifically `monai.transforms.Compose`, will output a list of dicts over the
+    batch, whereas many downstream handlers expect a tuple of lists,
+    where each list contains all items for a batch, i.e. ([img1, img2, ...], [label1, label2, ...]).
+
+    The alternative way, of using `monai.transforms.Compose` with from_engine directly,
+    does not allow from_engine to unpack the outputs correctly,
+    and would not be correctly typed anyhow.
+
+    NOTE: Runs the transforms before extracting the keys, so the
+    transforms should handle a dict.
+    
+    """
+
+    from_engine_fn = from_engine(keys, first)
+
+    def _wrapper(data):
+        if isinstance(data, dict):
+            # why does monai not use a class to ensure these things?
+            data = [data]
+        transformed = [transform(d) for d in data]
+         # transformed is now a list of dicts, one per batch item
+        return from_engine_fn(transformed)
+    
+    return _wrapper
