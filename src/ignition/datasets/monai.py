@@ -18,7 +18,8 @@ from monai.transforms import (
     RandSpatialCropd,
     ScaleIntensityd,
     Spacingd,
-    LabelFilterd
+    LabelFilterd,
+    MapLabelValued,
 )
 
 from .base import PairedDataset
@@ -159,10 +160,16 @@ class SegmentationFolder(PairedDataset):
         # TODO: Move to hydra instantiate
         # Selected transforms are based on https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/brats_segmentation_3d.ipynb
         match transform.type:
+            case "MapLabelValue":
+                return MapLabelValued(
+                    keys=[self.label_key],
+                    orig_labels=transform.orig_labels,
+                    target_labels=transform.target_labels,
+                )
             case "LabelFilter":
                 return LabelFilterd(
                     keys=[self.label_key],
-                    applied_labels=transform.get("include_classes", 0),
+                    applied_labels=transform.get("applied_labels", 0),
                 )
             case "AsDiscrete":
                 return AsDiscreted(
