@@ -48,11 +48,39 @@ handlers:
       index: 0
       frame_dim: -1
       batch_transform:
-        _target_: monai.handlers.from_engine
+        _target_: ignition.utils.from_engine_with_transform
         keys: ['image', 'label']  # keys to extract from the batch
+        first: false
+        transform:
+          _target_: monai.transforms.ScaleIntensityRangePercentilesd
+          # maps percentiles to range [0,1]
+          keys:
+          - image
+          - label
+          lower: 0.0
+          upper: 100.0
+          b_min: 0
+          b_max: 1
       output_transform:
-        _target_: monai.handlers.from_engine
+        _target_: ignition.utils.from_engine_with_transform
         keys: ['pred']  # keys to extract from the output
+        first: false
+        transform:
+          _target_: monai.transforms.Compose
+          unpack_items: true
+          transforms:
+            - _target_: monai.transforms.Activations
+              softmax: true
+            - _target_: monai.transforms.AsDiscrete
+              argmax: true
+              to_onehot: null
+              include_background: true
+            - _target_: monai.transforms.ScaleIntensityRangePercentiles
+              # maps percentiles to range [0,1]
+              lower: 0.0
+              upper: 100.0
+              b_min: 0
+              b_max: 1
   checkpoint_loader:
     _target_: monai.handlers.CheckpointLoader
     _convert_: all
