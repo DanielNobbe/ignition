@@ -72,6 +72,13 @@ metrics:
       output_transform: 
         _target_: monai.handlers.from_engine
         keys: ['pred', 'label']  # keys to extract from the output
+    - _target_: monai.handlers.ConfusionMatrix
+      _key_: conf_matrix  # TODO: Implement conf matrix with all metrics
+      metric_name: "f1 score"
+      include_background: true
+      output_transform:
+        _target_: monai.handlers.from_engine
+        keys: ['pred', 'label']  # keys to extract from the output
   train:
     - _target_: monai.handlers.IgniteMetricHandler
       _key_: train_loss
