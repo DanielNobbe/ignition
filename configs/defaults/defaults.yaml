@@ -49,10 +49,18 @@ post_transforms:
         keys: ['pred']  # keys to apply the activation to
         softmax: true
       - _target_: monai.transforms.AsDiscreted
-        keys: ['label', 'pred']  # keys to apply the discretization to
+        keys: ['pred']  # keys to apply the discretization to
         argmax: true  # apply argmax to the predictions
+        to_onehot: ${num_classes}  # convert to one-hot encoding  -- already one-hot from output
+        include_background: true  # include background class in the discretization
+        # keepdims: true
+        # maybe we need a threshold here? or still argmax?
+      - _target_: monai.transforms.AsDiscreted
+        keys: ['label']  # keys to apply the discretization to
+        argmax: false  # apply argmax to the predictions
         to_onehot: ${num_classes}  # convert to one-hot encoding
         include_background: true  # include background class in the discretization
+        # it seems the label is not one-hot encoded, but we also don't need to argmax, since there is a threshold already. But we don't need that either
 
 lr_scheduler:
   type: PolynomialLR # learning rate scheduler type
