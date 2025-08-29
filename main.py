@@ -28,6 +28,8 @@ try:
 except ImportError:
     from torch.optim.lr_scheduler import _LRScheduler as PyTorchLRScheduler
 
+OmegaConf.register_new_resolver("math", simple_math_resolver)
+
 
 def train(config: DictConfig):
     """Main training function.
