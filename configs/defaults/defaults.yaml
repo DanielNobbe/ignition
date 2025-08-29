@@ -62,10 +62,6 @@ post_transforms:
         include_background: true  # include background class in the discretization
         # it seems the label is not one-hot encoded, but we also don't need to argmax, since there is a threshold already. But we don't need that either
 
-lr_scheduler:
-  type: PolynomialLR # learning rate scheduler type
-  power: 0.8 # power for the polynomial decay
-
 metrics:
   val:  # by default, the first metric is used as the 'key' metric
     - _target_: monai.handlers.MeanDice
