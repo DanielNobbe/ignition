@@ -16,6 +16,8 @@ from monai.handlers import from_engine
 from monai.config import KeysCollection
 from omegaconf import OmegaConf, DictConfig
 
+import re
+
 printer = getLogger(__name__)
 
 def handle_num_workers(config):
@@ -233,3 +235,12 @@ def from_engine_with_transform(keys: KeysCollection, transform: Transform, first
         return from_engine_fn(transformed)
     
     return _wrapper
+
+
+def simple_math_resolver(expr):
+    """Custom OmegaConf resolver to do simple math with + and -."""
+    m = re.match(r"^\s*(-?\d+)\s*([\+\-])\s*(-?\d+)\s*$", expr)
+    if not m:
+        raise ValueError("Only single + or - supported: 'a + b' or 'a - b'")
+    a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
+    return a + b if op == "+" else a - b
