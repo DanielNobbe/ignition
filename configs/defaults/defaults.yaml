@@ -70,6 +70,12 @@ metrics:
       output_transform: 
         _target_: monai.handlers.from_engine
         keys: ['pred', 'label']  # keys to extract from the output
+    - _target_: monai.handlers.MeanDice
+      _key_: mean_dice_fg
+      include_background: false
+      output_transform: 
+        _target_: monai.handlers.from_engine
+        keys: ['pred', 'label']  # keys to extract from the output
     - _target_: monai.handlers.MeanIoUHandler
       _key_: mean_iou
       include_background: true
