@@ -23,7 +23,6 @@ def instantiate_scheduler(config: DictConfig, optimizer: Optimizer, **kwargs) ->
         # This is needed because ignite's tree_apply function does not handle dictconfig objects as dicts..
     else:
         # Otherwise, instantiate it without any parameters
-        breakpoint()
         return instantiate(config, optimizer=optimizer)
 
 
