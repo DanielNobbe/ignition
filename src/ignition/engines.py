@@ -63,6 +63,7 @@ def setup_trainer(
                 optimizer=optimizer,
                 loss_function=loss_fn,
                 non_blocking=True,
+                postprocessing=instantiate(config.post_transforms.get("train")),
                 key_train_metric=key_metric,
                 additional_metrics=other_metrics,
             )
