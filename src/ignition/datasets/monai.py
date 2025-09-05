@@ -24,6 +24,10 @@ from monai.transforms import (
 
 from .base import PairedDataset
 
+from logging import getLogger
+
+printer = getLogger(__name__)
+
 
 class SegmentationFolder(PairedDataset):
     """
@@ -58,6 +62,10 @@ class SegmentationFolder(PairedDataset):
         self.images_dir = self.config.dataset.images_dir
 
         image_files = self._filter_image_files(os.listdir(self.config.dataset.images_dir))
+
+        image_files.sort()  # ensure consistent order for validation split
+
+        printer.info(f"All image files: {image_files}")
 
         if not self._verify_all_same_ext(image_files):
             raise ValueError(f"Not all image files in directory {self.config.dataset.images_dir} have the same extension.")
