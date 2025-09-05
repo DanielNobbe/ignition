@@ -20,6 +20,9 @@ from monai.transforms import (
     Spacingd,
     LabelFilterd,
     MapLabelValued,
+    RandGaussianSmoothd,
+    RandGaussianNoised,
+    RandAdjustContrastd,
 )
 
 from .base import PairedDataset
@@ -242,6 +245,29 @@ class SegmentationFolder(PairedDataset):
                 )
             case "EnsureChannelFirst":
                 return EnsureChannelFirstd(keys=[self.image_key, self.label_key], channel_dim=transform.channel_dim)
+            case "RandGaussianSmooth":
+                return RandGaussianSmoothd(
+                    keys=[self.image_key],
+                    prob=transform.prob,
+                    sigma_x=transform.get("sigma_x", (0.5, 1.5)),
+                    sigma_y=transform.get("sigma_y", (0.5, 1.5)),
+                    sigma_z=transform.get("sigma_z", (0.5, 1.5)),
+                )
+            case "RandGaussianNoise":
+                return RandGaussianNoised(
+                    keys=[self.image_key],
+                    prob=transform.prob,
+                    mean=transform.get("mean", 0.0),
+                    std=transform.get("std", 0.5),
+                )
+            case "RandAdjustContrast":
+                return RandAdjustContrastd(
+                    keys=[self.image_key],
+                    prob=transform.prob,
+                    gamma=transform.get("gamma", (0.7, 1.5)),
+                    retain_stats=transform.get("retain_stats", True),
+                    invert_image=transform.get("invert_image", False),
+                )
             case _:
                 raise ValueError(f"Unknown transform type: {transform.type}")
 
