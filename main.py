@@ -56,6 +56,10 @@ def train(config: DictConfig):
 
     config.output_dir = output_dir
 
+    # setup basic logger
+    logger = setup_logging(config)
+    logger.info("Configuration: \n%s", pformat(config))
+
     # load datasets and create dataloaders
     dataset = setup_dataset(config)
     dataloader_train = dataset.get_train_dataloader()
@@ -76,8 +80,6 @@ def train(config: DictConfig):
     validator = setup_evaluator(config, model, setup_metrics(config, "val", loss_fn, model), device, dataset)
 
     # setup engines logger with python logging
-    logger = setup_logging(config)
-    logger.info("Configuration: \n%s", pformat(config))
     trainer.logger = validator.logger = logger
 
     setup_handlers(config, model, optimizer, trainer, validator, lr_scheduler=lr_scheduler)
