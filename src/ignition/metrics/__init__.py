@@ -37,7 +37,7 @@ def instantiate_metric(metric_config: DictConfig, **kwargs) -> Dict[str, Metric]
 
 def setup_metrics(
     config,
-    metrics_name: str = "val",
+    metrics_name: str | None = None,
     loss_fn: Callable | None = None,
     model: Module | None = None,
     trainer: Engine | None = None,
@@ -51,15 +51,21 @@ def setup_metrics(
     }
 
     metrics = {}
-    for metric_config in config.metrics.get(metrics_name, {}):
+    metrics_key = metrics_name if metrics_name is not None else "list"
+    metrics_config_list = config.metrics.get(metrics_key, [])
+    if not metrics_config_list:
+        raise ValueError(f"No metrics found in config for '{metrics_name}'." if metrics_name else "No metrics found in config.")
+
+    for metric_config in metrics_config_list:
         metric_config = metric_config.copy()
         metric_key = metric_config.pop("_key_")
         metrics.update(({metric_key: instantiate_metric(metric_config, **instantiate_kwargs)}))
 
     first_key = next(iter(metrics))
-    if not config.metrics.get(f"{metrics_name}_key_metric_name") == first_key:
+    key_metric_name = f"{metrics_name}_key_metric_name" if metrics_name is not None else "key_metric_name"
+    if not config.metrics.get(key_metric_name) == first_key:
         raise ValueError(
-            f"First metric key '{first_key}' does not match expected key '{config.metrics.get(f'{metrics_name}_key_metric_name')}'."
+            f"First metric key '{first_key}' does not match expected key '{config.metrics.get(f'{metrics_key}_key_metric_name')}'."
         )
 
     return metrics
