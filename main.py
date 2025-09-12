@@ -77,7 +77,7 @@ def train(config: DictConfig):
     trainer = setup_trainer(
         config, model, optimizer, loss_fn, device, dataset, setup_metrics(config, "train", loss_fn, model)
     )
-    validator = setup_evaluator(config, model, setup_metrics(config, "val", loss_fn, model), device, dataset)
+    validator = setup_evaluator(config, model, setup_metrics(config, "val", loss_fn, model), device, dataset, name="val")
 
     # setup engines logger with python logging
     trainer.logger = validator.logger = logger
@@ -96,10 +96,84 @@ def train(config: DictConfig):
         trainer.run()
     else:
         raise ValueError(f"Unknown engine type: {config.engine_type}. Supported types are 'ignite' and 'monai'.")
+    
+    logger.info("Training completed successfully!")
+
+
+def evaluate(config: DictConfig):
+    """Run model on evaluation dataset.
+    
+    Should have the option to store all inferences, and give accurate metrics.
+
+    TODO: Look into loading from any random model checkpoint + spec, without config
+    """
+
+    world_size = idist.get_world_size()
+    if world_size > 1:
+        warn(
+            "Running this evaluation script on multiple GPUs is not fully supported. To add support, look into adding rank-conditional logic for the handlers, metrics and dataloaders. And verify that all LR schedulers and optimizers support distributed training, e.g. by using `ignite.distributed.auto_optim`."
+        )
+
+    model_dir = config.get("model_dir", None)
+    if model_dir is None:
+        raise ValueError("For evaluation, the 'model_dir' field must be specified in the config, pointing to the training output directory.")
+    
+    model_config = get_model_config(model_dir)
+    
+    monai.config.print_config()
+    # make a certain seed
+    rank = idist.get_rank()
+    manual_seed(config.seed + rank)
+
+    output_dir = setup_output_dir(config, rank)
+    if rank == 0:
+        save_config(config, output_dir)
+    config.output_dir = output_dir
+
+    # setup basic logger
+    logger = setup_logging(config)
+    logger.info("Configuration: \n%s", pformat(config))
+
+    dataset = setup_dataset(config)  # Very important to not use the model config here, since the model is trained on that!
+
+    # model, optimizer, loss function, device
+    device = idist.device()
+    model = idist.auto_model(setup_model(model_config))
+    # model = setup_model(model_config)
+    # load model weights from best checkpoint
+    model = load_checkpoint_for_evaluation(config, model_dir, model, logger)
+
+    # load model-specific loss
+    if "loss" in config.keys():
+        loss_fn = setup_loss(config).to(device=device)
+    elif "loss" in model_config.keys():
+        loss_fn = setup_loss(model_config).to(device=device)
+    else:
+        loss_fn = None
+        logger.warning("No loss function found in either the evaluation or model config. Some metrics may not work.")
+    
+    evaluator = setup_evaluator(config, model, setup_metrics(config, loss_fn=loss_fn, model=model), device, dataset, output_dir=output_dir / "output")  # name is for post transforms
+
+    evaluator.logger = logger
+
+    logger.info("Starting evaluation.")
+
+    # TODO: Add things to log all images (post transform), and any other scores
+
+    if config.engine_type == "ignite":
+        evaluator.run(dataset.get_dataloader())
+    elif config.engine_type == "monai":
+        evaluator.run()
+    else:
+        raise ValueError(f"Unknown engine type: {config.engine_type}. Supported types are 'ignite' and 'monai'.")
+    
+    logger.info("Evaluation complete.")
 
 def run(local_rank: int, config: Any):
     if config.mode == "train":
         train(config)
+    elif config.mode == "eval":
+        evaluate(config)
     else:
         raise ValueError(f"Unknown mode: {config.mode}. Supported modes are 'train'.")
 
@@ -114,14 +188,13 @@ def main(cfg: DictConfig):
 
     if cfg.get("resume") is not None:
         
-        cfg = resume_from(cfg.resume)
+        cfg = resume_from_log(cfg.resume)
         print(f"Resuming from {cfg.resume}")
 
     config = setup_config(cfg)
     with idist.Parallel(config.backend) as p:
         p.run(run, config=config)
 
-    print("Training completed successfully!")
 
 
 if __name__ == "__main__":

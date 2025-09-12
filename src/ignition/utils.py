@@ -187,7 +187,47 @@ def find_last_checkpoint(checkpoint_dir: Union[str, Path]) -> Path | None:
     return checkpoints[0] if checkpoints else None
 
 
-def resume_from(resume_path: str, config_name: str = "config-lock.yaml") -> DictConfig:
+def get_model_config(model_dir, config_name="config-lock.yaml"):
+    """Load model configuration from a specified directory."""
+    config_file = Path(model_dir) / config_name
+    if not config_file.exists():
+        raise FileNotFoundError(f"Could not find {config_name} in directory {model_dir}")
+    
+    model_config = OmegaConf.load(config_file)
+    return model_config
+
+
+def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: torch.nn.Module, logger: Logger):
+    """Load model weights from the best checkpoint for evaluation.
+
+    Parameters
+    ----------
+    config
+        configuration object, must contain `train_dir` field pointing to training output directory.
+    model
+        model to load weights into
+    logger
+        logger to log info about loading the checkpoint
+
+    Returns
+    -------
+    model
+        model with loaded weights
+    """
+    
+    last_checkpoint = find_last_checkpoint(Path(model_dir) / "checkpoints/train")
+    if last_checkpoint is None:
+        raise FileNotFoundError(f"No checkpoint found in {model_dir}")
+    
+    logger.info(f"Loading model weights from checkpoint: {last_checkpoint}")
+    
+    to_load = {"model": model}
+    resume_from(to_load, last_checkpoint, logger, strict=True)
+    
+    return model
+
+
+def resume_from_log(resume_path: str, config_name: str = "config-lock.yaml") -> DictConfig:
     """Resume configuration from a checkpoint file."""
     if not Path(resume_path).exists():
         raise FileNotFoundError(f"Resume path does not exist: {resume_path}")
@@ -235,6 +275,9 @@ def from_engine_with_transform(keys: KeysCollection, transform: Transform, first
         return from_engine_fn(transformed)
     
     return _wrapper
+
+
+
 
 
 def simple_math_resolver(expr):
