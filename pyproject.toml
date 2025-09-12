@@ -13,6 +13,7 @@ dependencies = [
     "image-dataset-viz>=0.2.2",
     "isort>=6.0.1",
     "jupyter>=1.1.1",
+    "lmdb>=1.7.3",
     "monai[einops,gdown,h5py,huggingface-hub,imagecodecs,itk,matplotlib,mlflow,nibabel,ninja,optuna,pandas,pillow,pydicom,tifffile,tqdm,transformers]>=1.5.0",
     "moviepy>=2.2.1",
     "pytest>=8.4.1",
