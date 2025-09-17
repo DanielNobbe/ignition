@@ -1,5 +1,5 @@
-from .base import PairedDataset
-from .monai import SegmentationFolder
+from .base import PairedDataset, IgnitionDataset
+from .monai import SegmentationFolder, EvalSegmentationFolder
 from .vocsegmentation import VOCSegmentationPairedDataset
 
 
@@ -10,6 +10,8 @@ def setup_dataset(config):
             return VOCSegmentationPairedDataset(config=config)
         case "MonaiSegmentationFolder":
             return SegmentationFolder(config=config)
+        case "MonaiEvalSegmentationFolder":
+            return EvalSegmentationFolder(config=config)
         case _:
             raise ValueError(
                 f"Dataset type {config.dataset.type} is not supported. It can be implemented in the datasets directory."

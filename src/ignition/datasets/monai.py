@@ -3,7 +3,7 @@ from pathlib import Path
 from warnings import warn
 
 from ignite.utils import convert_tensor
-from monai.data import CacheDataset, DataLoader
+from monai.data import CacheDataset, LMDBDataset, DataLoader
 from monai.transforms import (
     AsDiscreted,
     Compose,
@@ -18,151 +18,39 @@ from monai.transforms import (
     RandSpatialCropd,
     ScaleIntensityd,
     Spacingd,
-    LabelFilterd
+    LabelFilterd,
+    MapLabelValued,
+    RandGaussianSmoothd,
+    RandGaussianNoised,
+    RandAdjustContrastd,
+    AsDiscreted,
 )
 
-from .base import PairedDataset
+from .base import PairedDataset, IgnitionDataset
+
+from logging import getLogger
+
+printer = getLogger(__name__)
 
 
-class SegmentationFolder(PairedDataset):
-    """
-    A dataset class for loading images from a folder structure, where
-    there are separate folders for images and labels.
-    This class incorporates splitting the dataset into training and validation sets.
-    """
-
-    image_key = "image"
-    label_key = "label"
-
-    image_extensions = [
-        ".nii",
-        ".nii.gz",
-    ]
-
-    @staticmethod
-    def _get_full_extension(file: str) -> str:
-        return ''.join(Path(file).suffixes)
-
-    def _filter_image_files(self, files: list[str]) -> list[str]:
-        """Filter image files based on the defined extensions."""
-        return [f for f in files if self._get_full_extension(f) in self.image_extensions]
-
-
-    def _setup_datasets(self):
-        # create a list of all files and label files in these directories
-        # TODO: Implement another class that does not need to keep
-        # items in memory
-        # TODO: Implement based on CacheDataset
-
-        self.images_dir = self.config.dataset.images_dir
-
-        image_files = self._filter_image_files(os.listdir(self.config.dataset.images_dir))
-
-        if not self._verify_all_same_ext(image_files):
-            raise ValueError(f"Not all image files in directory {self.config.dataset.images_dir} have the same extension.")
-
-        self.labels_dir = self.config.dataset.labels_dir
-        label_files = self._filter_image_files(os.listdir(self.config.dataset.labels_dir))
-
-        assert len(image_files) > 0, f"No image files found in directory {self.config.dataset.images_dir}."
-        assert len(label_files) > 0, f"No label files found in directory {self.config.dataset.labels_dir}."
-
-
-        if not self._verify_all_same_ext(label_files):
-            raise ValueError(f"Not all label files in directory {self.config.labels_dir} have the same extension.")
-
-        data_dict = [self._create_dict(image_file) for image_file in image_files]
-
-        # super().__init__(data=data_dict)
-
-        # TODO: Handle subsetting to decrease size
-
-        # split into train and eval sets
-        if self.config.dataset.get("val_size") is not None:
-            val_size = self.config.dataset.val_size
-        else:
-            val_size = 0.2
-            warn("val_size not specified in config, defaulting to 0.2 (20% of data will be used for evaluation).")
-        if not (0 < val_size < 1):
-            raise ValueError("val_size must be a float between 0 and 1.")
-        split_index = int(len(data_dict) * (1 - val_size))
-        self.train_data = data_dict[:split_index]
-        self.val_data = data_dict[split_index:]
-
-        # TODO: Use cached or threaddataset from monai
-        # train_images, train_labels = zip(*[(item['img'], item.get('label')) for item in self.train_data])
-        # val_images, val_labels = zip(*[(item['img'], item.get('label')) for item in self.val_data])
-        if self.config.dataset.get("subset_size") is not None and (self.config.dataset.subset_size < 1.0):
-            warn("Using subset_size, which does not use torch.Subset, but takes a naive slice.")
-            train_subset_size = int(len(self.train_data) * self.config.dataset.subset_size)
-            eval_subset_size = int(len(self.val_data) * self.config.dataset.subset_size)
-            if train_subset_size <= 0 or eval_subset_size <= 0:
-                raise ValueError("data_subset_size must result in at least one sample for both subsets.")
-            self.train_data = self.train_data[:train_subset_size]
-            self.val_data = self.val_data[:eval_subset_size]
-
-        self.train_dataset = CacheDataset(
-            data=self.train_data,
-            transform=self._get_train_transforms(),
-            cache_num=self.config.dataset.get("cache_num", 1),  # number of samples to cache in memory
-        )
-        self.val_dataset = CacheDataset(
-            data=self.val_data,
-            transform=self._get_val_transforms(),
-            cache_num=self.config.dataset.get("cache_num", 1),  # number of samples to cache in memory
-        )
-
-        print(f"Loaded {len(self.train_dataset)} training samples and {len(self.val_dataset)} validation samples.")
-
-        # TODO: Add train and val transforms
-
-        # NOTE: MONAI training systems often use sliding window inference
-        # which works well to get models that can infer on images with irregular
-        # size, especially if the number of layers varies.
-        # it does cost more compute to train, although
-        # probably the performance is bad if evaluating with sliding
-        # window while training on crops?
-        # TODO: Add option to use sliding window inference, compare models
-
-        # NOTE: By using MONAI Dataloader,
-        # we are incompatible with multi-node training,
-        # but multi-GPU training should work fine.
-        self.train_dataloader = DataLoader(
-            self.train_dataset,
-            num_workers=self.config.get("num_workers", 1),
-            batch_size=self.config.batch_size,
-            shuffle=True,
-            drop_last=True,
-        )
-
-        if self.config.get("inferer") is not None:
-            # if using custom inferer, we use batch size of 1,
-            # since it may do custom batching
-            eval_batch_size = 1
-            warn(
-                f"Using custom inferer {self.config.inferer.get('_target_', 'unknown')}, setting eval batch size to 1. Inferer may handle batching. "
-            )
-        else:
-            # otherwise, we use the eval batch size from the config
-            eval_batch_size = self.config.eval_batch_size
-
-        self.val_dataloader = DataLoader(
-            self.val_dataset,
-            num_workers=self.config.get("num_workers", 1),
-            batch_size=eval_batch_size,  # if using sliding window inference, batch size is 1
-            shuffle=False,
-            drop_last=False,
-        )
-
+class MonaiTransformsMixin:
+    # TODO: Figure out how to ensure the self.image_key and self.label_key
+    # are present in the child class
     def _get_transform(self, transform: dict):
         # TODO: Move to transforms file
         # TODO: Move to hydra instantiate
         # Selected transforms are based on https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/brats_segmentation_3d.ipynb
         match transform.type:
+            case "MapLabelValue":
+                return MapLabelValued(
+                    keys=[self.label_key],
+                    orig_labels=transform.orig_labels,
+                    target_labels=transform.target_labels,
+                )
             case "LabelFilter":
                 return LabelFilterd(
                     keys=[self.label_key],
-                    applied_labels=transform.get("include_classes", 0),
+                    applied_labels=transform.get("applied_labels", 0),
                 )
             case "AsDiscrete":
                 return AsDiscreted(
@@ -227,8 +115,224 @@ class SegmentationFolder(PairedDataset):
                 )
             case "EnsureChannelFirst":
                 return EnsureChannelFirstd(keys=[self.image_key, self.label_key], channel_dim=transform.channel_dim)
+            case "RandGaussianSmooth":
+                return RandGaussianSmoothd(
+                    keys=[self.image_key],
+                    prob=transform.prob,
+                    sigma_x=transform.get("sigma_x", (0.5, 1.5)),
+                    sigma_y=transform.get("sigma_y", (0.5, 1.5)),
+                    sigma_z=transform.get("sigma_z", (0.5, 1.5)),
+                )
+            case "RandGaussianNoise":
+                return RandGaussianNoised(
+                    keys=[self.image_key],
+                    prob=transform.prob,
+                    mean=transform.get("mean", 0.0),
+                    std=transform.get("std", 0.5),
+                )
+            case "RandAdjustContrast":
+                return RandAdjustContrastd(
+                    keys=[self.image_key],
+                    prob=transform.prob,
+                    gamma=transform.get("gamma", (0.7, 1.5)),
+                    retain_stats=transform.get("retain_stats", True),
+                    invert_image=transform.get("invert_image", False),
+                )
+            case "AsDiscreteLabel":
+                return AsDiscreted(
+                    keys=[self.label_key],
+                    argmax=transform.get("argmax", False),
+                    to_onehot=transform.get("to_onehot", None),
+                    include_background=transform.get("include_background", True),
+                )
             case _:
                 raise ValueError(f"Unknown transform type: {transform.type}")
+
+
+class MonaiFolderUtilsMixin:
+    image_key = "image"
+    label_key = "label"
+
+    image_extensions = [
+        ".nii",
+        ".nii.gz",
+    ]
+
+    @staticmethod
+    def _get_full_extension(file: str) -> str:
+        return ''.join(Path(file).suffixes)
+
+    def _filter_image_files(self, files: list[str]) -> list[str]:
+        """Filter image files based on the defined extensions."""
+        return [f for f in files if self._get_full_extension(f) in self.image_extensions]
+    
+    @staticmethod
+    def _verify_all_same_ext(files: list[str]) -> bool:
+        """Check if all files have the same extension."""
+        if not files:
+            return True
+        ext = os.path.splitext(files[0])[1]
+        return all(os.path.splitext(f)[1] == ext for f in files)
+
+    def _create_dict(self, image_file):
+        output = {self.image_key: os.path.join(self.images_dir, image_file)}
+
+        if self.labels_dir:
+            file_name = image_file  # could also split off extension if it's different
+            output[self.label_key] = os.path.join(self.labels_dir, file_name)
+
+            # ensure it exists
+            if not os.path.isfile(output[self.label_key]):
+                raise ValueError(f"Label file {output[self.label_key]} not found.")
+
+        return output
+    
+    def get_prepare_batch(self):
+        def prepare_batch(batch, device, non_blocking):
+            x, y = batch[self.image_key], batch[self.label_key]
+            return x, y
+
+        return prepare_batch
+        
+class MonaiDatasetUtilsMixin:
+    @staticmethod
+    def build_dataset(dataset_config, data_list, transforms):
+        match dataset_config.get("cache_mode", "memory"):
+            case "memory":
+                if not dataset_config.get("cache_num", False):
+                    raise ValueError("cache_num must be specified in config when using memory cache_mode.")
+                return CacheDataset(
+                    data=data_list,
+                    transform=transforms,
+                    cache_num=dataset_config.get("cache_num", 1),  # number of samples to cache in memory
+                )
+            case "lmdb":
+                if not dataset_config.get("cache_dir", False):
+                    raise ValueError("cache_dir must be specified in config when using lmdb cache_mode.")
+                return LMDBDataset(
+                    data=data_list,
+                    transform=transforms,
+                    cache_dir=dataset_config.cache_dir
+                )
+
+class SegmentationFolder(MonaiFolderUtilsMixin, PairedDataset, MonaiTransformsMixin, MonaiDatasetUtilsMixin):
+    """
+    A dataset class for loading images from a folder structure, where
+    there are separate folders for images and labels.
+    This class incorporates splitting the dataset into training and validation sets.
+    """
+
+    def _setup_datasets(self):
+        # create a list of all files and label files in these directories
+        # TODO: Implement another class that does not need to keep
+        # items in memory
+        # TODO: Implement based on CacheDataset
+
+        self.images_dir = self.config.dataset.images_dir
+
+        image_files = self._filter_image_files(os.listdir(self.config.dataset.images_dir))
+
+        image_files.sort()  # ensure consistent order for validation split
+
+        printer.info(f"All image files: {image_files}")
+
+        if not self._verify_all_same_ext(image_files):
+            raise ValueError(f"Not all image files in directory {self.config.dataset.images_dir} have the same extension.")
+
+        self.labels_dir = self.config.dataset.labels_dir
+        label_files = self._filter_image_files(os.listdir(self.config.dataset.labels_dir))
+
+        assert len(image_files) > 0, f"No image files found in directory {self.config.dataset.images_dir}."
+        assert len(label_files) > 0, f"No label files found in directory {self.config.dataset.labels_dir}."
+
+
+        if not self._verify_all_same_ext(label_files):
+            raise ValueError(f"Not all label files in directory {self.config.labels_dir} have the same extension.")
+
+        data_list = [self._create_dict(image_file) for image_file in image_files]
+
+        # super().__init__(data=data_list)  # TODO: Move logic to parent class
+
+        # TODO: Handle subsetting to decrease size
+
+        # split into train and eval sets
+        if self.config.dataset.get("val_size") is not None:
+            val_size = self.config.dataset.val_size
+        else:
+            val_size = 0.2
+            warn("val_size not specified in config, defaulting to 0.2 (20% of data will be used for evaluation).")
+        if not (0 < val_size < 1):
+            raise ValueError("val_size must be a float between 0 and 1.")
+        split_index = int(len(data_list) * (1 - val_size))
+        self.train_data = data_list[:split_index]
+        self.val_data = data_list[split_index:]
+
+        # TODO: Use cached or threaddataset from monai
+        # train_images, train_labels = zip(*[(item['img'], item.get('label')) for item in self.train_data])
+        # val_images, val_labels = zip(*[(item['img'], item.get('label')) for item in self.val_data])
+        if self.config.dataset.get("subset_size") is not None and (self.config.dataset.subset_size < 1.0):
+            warn("Using subset_size, which does not use torch.Subset, but takes a naive slice.")
+            train_subset_size = int(len(self.train_data) * self.config.dataset.subset_size)
+            eval_subset_size = int(len(self.val_data) * self.config.dataset.subset_size)
+            if train_subset_size <= 0 or eval_subset_size <= 0:
+                raise ValueError("data_subset_size must result in at least one sample for both subsets.")
+            self.train_data = self.train_data[:train_subset_size]
+            self.val_data = self.val_data[:eval_subset_size]
+
+        # self.train_dataset = CacheDataset(
+        #     data=self.train_data,
+        #     transform=self._get_train_transforms(),
+        #     cache_num=self.config.dataset.get("cache_num", 1),  # number of samples to cache in memory
+        # )
+        self.train_dataset = self.build_dataset(self.config.dataset, self.train_data, self._get_train_transforms())
+        # self.val_dataset = CacheDataset(
+        #     data=self.val_data,
+        #     transform=self._get_val_transforms(),
+        #     cache_num=self.config.dataset.get("cache_num", 1),  # number of samples to cache in memory
+        # )
+        self.val_dataset = self.build_dataset(self.config.dataset, self.val_data, self._get_val_transforms())
+
+        print(f"Loaded {len(self.train_dataset)} training samples and {len(self.val_dataset)} validation samples.")
+
+        # TODO: Add train and val transforms
+
+        # NOTE: MONAI training systems often use sliding window inference
+        # which works well to get models that can infer on images with irregular
+        # size, especially if the number of layers varies.
+        # it does cost more compute to train, although
+        # probably the performance is bad if evaluating with sliding
+        # window while training on crops?
+        # TODO: Add option to use sliding window inference, compare models
+
+        # NOTE: By using MONAI Dataloader,
+        # we are incompatible with multi-node training,
+        # but multi-GPU training should work fine.
+        self.train_dataloader = DataLoader(
+            self.train_dataset,
+            num_workers=self.config.get("num_workers", 1),
+            batch_size=self.config.batch_size,
+            shuffle=True,
+            drop_last=True,
+        )
+
+        if self.config.get("inferer") is not None:
+            # if using custom inferer, we use batch size of 1,
+            # since it may do custom batching
+            eval_batch_size = 1
+            warn(
+                f"Using custom inferer {self.config.inferer.get('_target_', 'unknown')}, setting eval batch size to 1. Inferer may handle batching. "
+            )
+        else:
+            # otherwise, we use the eval batch size from the config
+            eval_batch_size = self.config.eval_batch_size
+
+        self.val_dataloader = DataLoader(
+            self.val_dataset,
+            num_workers=self.config.get("num_workers", 1),
+            batch_size=eval_batch_size,  # if using sliding window inference, batch size is 1
+            shuffle=False,
+            drop_last=False,
+        )
 
     def _get_train_transforms(self):
         transforms = []
@@ -254,36 +358,93 @@ class SegmentationFolder(PairedDataset):
 
         return Compose(transforms)
 
-    @staticmethod
-    def _verify_all_same_ext(files: list[str]) -> bool:
-        """Check if all files have the same extension."""
-        if not files:
-            return True
-        ext = os.path.splitext(files[0])[1]
-        return all(os.path.splitext(f)[1] == ext for f in files)
-
-    def _create_dict(self, image_file):
-        output = {self.image_key: os.path.join(self.images_dir, image_file)}
-
-        if self.labels_dir:
-            file_name = image_file  # could also split off extension if it's different
-            output[self.label_key] = os.path.join(self.labels_dir, file_name)
-
-            # ensure it exists
-            if not os.path.isfile(output[self.label_key]):
-                raise ValueError(f"Label file {output[self.label_key]} not found.")
-
-        return output
-
     def get_train_dataloader(self):
         return self.train_dataloader
 
     def get_val_dataloader(self):
         return self.val_dataloader
 
-    def get_prepare_batch(self):
-        def prepare_batch(batch, device, non_blocking):
-            x, y = batch[self.image_key], batch[self.label_key]
-            return x, y
 
-        return prepare_batch
+class EvalSegmentationFolder(IgnitionDataset, MonaiTransformsMixin, MonaiFolderUtilsMixin, MonaiDatasetUtilsMixin):
+    """
+    A dataset class for evaluation, which does include labels, but only contains a single dataset.
+    """
+
+    label_key = "label"  # still need to define, but will not be used
+
+    def _setup_dataset(self):
+        # create a list of all files and label files in these directories
+        self.images_dir = self.config.dataset.images_dir
+
+        image_files = self._filter_image_files(os.listdir(self.config.dataset.images_dir))
+
+        image_files.sort()  # ensure consistent order for validation split
+
+        printer.info(f"All image files: {image_files}")
+
+        if not self._verify_all_same_ext(image_files):
+            raise ValueError(f"Not all image files in directory {self.config.dataset.images_dir} have the same extension.")
+
+        self.labels_dir = self.config.dataset.labels_dir
+        label_files = self._filter_image_files(os.listdir(self.config.dataset.labels_dir))
+
+        assert len(image_files) > 0, f"No image files found in directory {self.config.dataset.images_dir}."
+        assert len(label_files) > 0, f"No label files found in directory {self.config.dataset.labels_dir}."
+
+
+        if not self._verify_all_same_ext(label_files):
+            raise ValueError(f"Not all label files in directory {self.config.labels_dir} have the same extension.")
+
+        data_list = [self._create_dict(image_file) for image_file in image_files]
+
+        if self.config.dataset.get("subset_size") is not None and (self.config.dataset.subset_size < 1.0):
+            warn("Using subset_size, which does not use torch.Subset, but takes a naive slice.")
+            subset_size = int(len(data_list) * self.config.dataset.subset_size)
+
+            if subset_size <= 0:
+                raise ValueError("data_subset_size must result in at least one sample.")
+            data_list = data_list[:subset_size]
+
+        # TODO: Move further logic to a parent class
+
+        # self.dataset = CacheDataset(
+        #     data=data_list,
+        #     transform=self._get_transforms(),
+        #     cache_num=self.config.dataset.get("cache_num", 1),  # number of samples to cache in memory
+        # )
+
+        self.dataset = self.build_dataset(self.config.dataset, data_list, self._get_transforms())
+
+        printer.info(f"Loaded {len(self.dataset)} samples.")
+
+        if self.config.get("inferer") is not None:
+            # if using custom inferer, we use batch size of 1,
+            # since it may do custom batching
+            eval_batch_size = 1
+            warn(
+                f"Using custom inferer {self.config.inferer.get('_target_', 'unknown')}, setting eval batch size to 1. Inferer may handle batching. "
+            )
+        else:
+            # otherwise, we use the eval batch size from the config
+            eval_batch_size = self.config.eval_batch_size
+
+        self.dataloader = DataLoader(
+            self.dataset,
+            num_workers=self.config.get("num_workers", 1),
+            batch_size=eval_batch_size,
+            shuffle=False,
+            drop_last=False,
+        )
+
+    def _get_transforms(self):
+        transforms = []
+
+        transforms.append(LoadImaged(keys=[self.image_key, self.label_key]))
+        transforms.append(EnsureTyped(keys=[self.image_key, self.label_key]))
+
+        for transform in self.config.dataset.get("transforms", []):
+            transforms.append(self._get_transform(transform))
+
+        return Compose(transforms)
+        
+    

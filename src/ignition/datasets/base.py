@@ -32,22 +32,21 @@ dataset, and return a dataloader for it.
 
 
 class IgnitionDataset(ABC):
-    def __init__(self, config, name="train"):
-        self.name = name
+    def __init__(self, config):
         # if name in config, use it, otherwise assume there
         # is only one dataset
-        self.config = config.dataset[name]
+        self.config = config
         # this gives an error if the name is not found, which is fine
         self.dataset = self._setup_dataset()
-        self.dataloader = self._setup_dataloader()
+        # self.dataloader = self._setup_dataloader()
 
     @abstractmethod
     def _setup_dataset(self):
         raise NotImplementedError("This method should be implemented in a subclass")
 
-    @abstractmethod
-    def _setup_dataloader(self):
-        raise NotImplementedError("This method should be implemented in a subclass")
+    # @abstractmethod
+    # def _setup_dataloader(self):
+    #     raise NotImplementedError("This method should be implemented in a subclass")
 
     def get_dataloader(self):
         return self.dataloader

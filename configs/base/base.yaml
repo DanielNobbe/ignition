@@ -47,12 +47,50 @@ handlers:
       interval: 1
       index: 0
       frame_dim: -1
+      max_channels: 3  # allows exporting as video iso gif
       batch_transform:
-        _target_: monai.handlers.from_engine
+        _target_: ignition.utils.from_engine_with_transform
         keys: ['image', 'label']  # keys to extract from the batch
+        first: false
+        transform:
+          _target_: monai.transforms.Compose
+          unpack_items: false
+          transforms:
+            - _target_: monai.transforms.ScaleIntensityd
+              # maps percentiles to range [0,1]
+              keys: ['image']
+              minv: 0.0
+              maxv: 1.0
+            - _target_: monai.transforms.ScaleIntensityRanged
+              keys: ['label']
+              # maps percentiles to range [0,1]
+              a_min: 0.0
+              a_max: ${math:"${num_classes} - 1"}
+              b_min: 0.0
+              b_max: 1.0
       output_transform:
-        _target_: monai.handlers.from_engine
+        _target_: ignition.utils.from_engine_with_transform
         keys: ['pred']  # keys to extract from the output
+        first: false
+        transform:
+          _target_: monai.transforms.Compose
+          unpack_items: false
+          transforms:
+            - _target_: monai.transforms.Activationsd
+              keys: ['pred']
+              softmax: true
+            - _target_: monai.transforms.AsDiscreted
+              keys: ['pred']
+              argmax: true
+              to_onehot: null
+              include_background: true
+            - _target_: monai.transforms.ScaleIntensityRanged
+              keys: ['pred']
+              # maps percentiles to range [0,1]
+              a_min: 0.0
+              a_max: ${math:"${num_classes} - 1"}
+              b_min: 0.0
+              b_max: 1.0
   checkpoint_loader:
     _target_: monai.handlers.CheckpointLoader
     _convert_: all

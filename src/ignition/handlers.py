@@ -10,7 +10,7 @@ from ignite.engine import Engine
 from omegaconf import DictConfig, ListConfig
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler as LrScheduler
-from torch.utils.tensorboard import SummaryWriter
+from tensorboardX import SummaryWriter
 
 from ignition.utils import get_epoch_function
 
@@ -107,7 +107,7 @@ def setup_tensorboard_writer(config: DictConfig | ListConfig, trainer, optimizer
     # )
     writer = logger.writer
 
-    printer.info("TensorBoard writer initialized at %s", writer.log_dir)
+    printer.info("TensorBoard writer initialized at %s", writer.logdir)
 
     log_config(config, writer)
 
@@ -146,7 +146,7 @@ def setup_train_handlers(
         "lr_scheduler": lr_scheduler,
         "validator": validator,
         "summary_writer": writer,
-        "save_dir": os.path.join(writer.get_logdir(), "checkpoints/train/"),
+        "save_dir": os.path.join(writer.logdir, "checkpoints/train/"),
         "save_dict": {
             "model": model,
             "optimizer": optimizer,
@@ -185,7 +185,7 @@ def setup_validation_handlers(
     instantiate_kwargs = {
         "trainer": trainer,
         "summary_writer": writer,
-        "save_dir": os.path.join(writer.get_logdir(), "checkpoints/val"),
+        "save_dir": os.path.join(writer.logdir, "checkpoints/val"),
         "save_dict": {
             "model": model,
         },

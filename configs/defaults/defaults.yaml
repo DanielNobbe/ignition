@@ -49,14 +49,18 @@ post_transforms:
         keys: ['pred']  # keys to apply the activation to
         softmax: true
       - _target_: monai.transforms.AsDiscreted
-        keys: ['label', 'pred']  # keys to apply the discretization to
+        keys: ['pred']  # keys to apply the discretization to
         argmax: true  # apply argmax to the predictions
+        to_onehot: ${num_classes}  # convert to one-hot encoding  -- already one-hot from output
+        include_background: true  # include background class in the discretization
+        # keepdims: true
+        # maybe we need a threshold here? or still argmax?
+      - _target_: monai.transforms.AsDiscreted
+        keys: ['label']  # keys to apply the discretization to
+        argmax: false  # apply argmax to the predictions
         to_onehot: ${num_classes}  # convert to one-hot encoding
         include_background: true  # include background class in the discretization
-
-lr_scheduler:
-  type: PolynomialLR # learning rate scheduler type
-  power: 0.8 # power for the polynomial decay
+        # it seems the label is not one-hot encoded, but we also don't need to argmax, since there is a threshold already. But we don't need that either
 
 metrics:
   val:  # by default, the first metric is used as the 'key' metric
@@ -66,10 +70,23 @@ metrics:
       output_transform: 
         _target_: monai.handlers.from_engine
         keys: ['pred', 'label']  # keys to extract from the output
+    - _target_: monai.handlers.MeanDice
+      _key_: mean_dice_fg
+      include_background: false
+      output_transform: 
+        _target_: monai.handlers.from_engine
+        keys: ['pred', 'label']  # keys to extract from the output
     - _target_: monai.handlers.MeanIoUHandler
       _key_: mean_iou
       include_background: true
       output_transform: 
+        _target_: monai.handlers.from_engine
+        keys: ['pred', 'label']  # keys to extract from the output
+    - _target_: monai.handlers.ConfusionMatrix
+      _key_: conf_matrix  # TODO: Implement conf matrix with all metrics
+      metric_name: "f1 score"
+      include_background: true
+      output_transform:
         _target_: monai.handlers.from_engine
         keys: ['pred', 'label']  # keys to extract from the output
   train:

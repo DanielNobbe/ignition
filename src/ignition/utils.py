@@ -11,7 +11,12 @@ import torch
 from ignite.engine import Engine
 from ignite.handlers import Checkpoint
 from ignite.utils import setup_logger
+from monai.transforms import Transform
+from monai.handlers import from_engine
+from monai.config import KeysCollection
 from omegaconf import OmegaConf, DictConfig
+
+import re
 
 printer = getLogger(__name__)
 
@@ -182,7 +187,47 @@ def find_last_checkpoint(checkpoint_dir: Union[str, Path]) -> Path | None:
     return checkpoints[0] if checkpoints else None
 
 
-def resume_from(resume_path: str, config_name: str = "config-lock.yaml") -> DictConfig:
+def get_model_config(model_dir, config_name="config-lock.yaml"):
+    """Load model configuration from a specified directory."""
+    config_file = Path(model_dir) / config_name
+    if not config_file.exists():
+        raise FileNotFoundError(f"Could not find {config_name} in directory {model_dir}")
+    
+    model_config = OmegaConf.load(config_file)
+    return model_config
+
+
+def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: torch.nn.Module, logger: Logger):
+    """Load model weights from the best checkpoint for evaluation.
+
+    Parameters
+    ----------
+    config
+        configuration object, must contain `train_dir` field pointing to training output directory.
+    model
+        model to load weights into
+    logger
+        logger to log info about loading the checkpoint
+
+    Returns
+    -------
+    model
+        model with loaded weights
+    """
+    
+    last_checkpoint = find_last_checkpoint(Path(model_dir) / "checkpoints/train")
+    if last_checkpoint is None:
+        raise FileNotFoundError(f"No checkpoint found in {model_dir}")
+    
+    logger.info(f"Loading model weights from checkpoint: {last_checkpoint}")
+    
+    to_load = {"model": model}
+    resume_from(to_load, last_checkpoint, logger, strict=True)
+    
+    return model
+
+
+def resume_from_log(resume_path: str, config_name: str = "config-lock.yaml") -> DictConfig:
     """Resume configuration from a checkpoint file."""
     if not Path(resume_path).exists():
         raise FileNotFoundError(f"Resume path does not exist: {resume_path}")
@@ -201,3 +246,44 @@ def resume_from(resume_path: str, config_name: str = "config-lock.yaml") -> Dict
     config.resume_from_checkpoint = last_checkpoint
 
     return config
+
+
+def from_engine_with_transform(keys: KeysCollection, transform: Transform, first: bool = False):
+    """Utility function based on `monai.handlers.from_engine` that includes a transform.
+    
+    Transforms, specifically `monai.transforms.Compose`, will output a list of dicts over the
+    batch, whereas many downstream handlers expect a tuple of lists,
+    where each list contains all items for a batch, i.e. ([img1, img2, ...], [label1, label2, ...]).
+
+    The alternative way, of using `monai.transforms.Compose` with from_engine directly,
+    does not allow from_engine to unpack the outputs correctly,
+    and would not be correctly typed anyhow.
+
+    NOTE: Runs the transforms before extracting the keys, so the
+    transforms should handle a dict.
+    
+    """
+
+    from_engine_fn = from_engine(keys, first)
+
+    def _wrapper(data):
+        if isinstance(data, dict):
+            # why does monai not use a class to ensure these things?
+            data = [data]
+        transformed = [transform(d) for d in data]
+         # transformed is now a list of dicts, one per batch item
+        return from_engine_fn(transformed)
+    
+    return _wrapper
+
+
+
+
+
+def simple_math_resolver(expr):
+    """Custom OmegaConf resolver to do simple math with + and -."""
+    m = re.match(r"^\s*(-?\d+)\s*([\+\-])\s*(-?\d+)\s*$", expr)
+    if not m:
+        raise ValueError("Only single + or - supported: 'a + b' or 'a - b'")
+    a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
+    return a + b if op == "+" else a - b
