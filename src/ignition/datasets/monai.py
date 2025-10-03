@@ -24,6 +24,8 @@ from monai.transforms import (
     RandGaussianNoised,
     RandAdjustContrastd,
     AsDiscreted,
+    SpatialPadd,
+    CenterSpatialCropd
 )
 
 from .base import PairedDataset, IgnitionDataset
@@ -41,6 +43,13 @@ class MonaiTransformsMixin:
         # TODO: Move to hydra instantiate
         # Selected transforms are based on https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/brats_segmentation_3d.ipynb
         match transform.type:
+            case "SpatialPad":
+                return SpatialPadd(
+                    keys=[self.image_key, self.label_key],
+                    spatial_size=transform.spatial_size,  # should be at least the roi size
+                    mode=transform.get("mode", "constant"),  # padding mode
+                    constant_values=transform.get("constant_values", 0),  # padding value
+                )
             case "MapLabelValue":
                 return MapLabelValued(
                     keys=[self.label_key],

@@ -170,6 +170,29 @@ def get_epoch_function(engine: Engine) -> int:
     return get_epoch
 
 
+def find_best_checkpoint(checkpoint_dir: Union[str, Path]):
+    # very simple, under the checkpoint/val folder, there is a single file with the name
+    # model_key_metric=xx.pt
+    if isinstance(checkpoint_dir, str):
+        checkpoint_dir = Path(checkpoint_dir)
+    if not checkpoint_dir.exists():
+        raise FileNotFoundError(f"Checkpoint directory {checkpoint_dir} does not exist.")
+    
+    checkpoints = list(checkpoint_dir.glob("*.pt")) + list(checkpoint_dir.glob("*.pth"))
+    if not checkpoints:
+        raise FileNotFoundError(f"No checkpoint files found in {checkpoint_dir}.")
+    
+    # One of the checkpoints will have 'model_key_metric=' in its name
+    # get all matches to make sure there's only one
+    best_checkpoints = [ckpt for ckpt in checkpoints if "model_key_metric=" in ckpt.name]
+    if len(best_checkpoints) > 1:
+        raise ValueError(f"Multiple best checkpoints found in {checkpoint_dir}: {best_checkpoints}")
+    if len(best_checkpoints) == 0:
+        return find_last_checkpoint(checkpoint_dir)
+    if len(best_checkpoints) == 1:
+        return best_checkpoints[0]
+
+
 def find_last_checkpoint(checkpoint_dir: Union[str, Path]) -> Path | None:
     """Find the last checkpoint file in the given directory."""
     if isinstance(checkpoint_dir, str):
@@ -182,8 +205,27 @@ def find_last_checkpoint(checkpoint_dir: Union[str, Path]) -> Path | None:
     if not checkpoints:
         return None
 
-    # Sort by modification time, descending
-    checkpoints.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+    # the checkpoints have names with the epoch number, so we could get the last one by 
+    # sorting alphabetically.
+    # This does not take into account the 'final_model.pth' checkpoint though, which is always okay to take
+
+    final_model_matches = [ckpt for ckpt in checkpoints if "final_model" in ckpt.name]
+    if len(final_model_matches) > 1:
+        raise ValueError(f"Multiple final_model checkpoints found in {checkpoint_dir}: {final_model_matches}")
+    if len(final_model_matches) == 1:
+        return final_model_matches[0]
+    
+    # if there is no final model, use the model with the highest epoch number
+
+    # Sort by name, the highest number should be first.
+    # this is problematic though because 999 would come before 1000
+    def extract_epoch(ckpt: Path) -> int:
+        match = re.search(r"epoch=(\d+)", ckpt.name)
+        if match:
+            return int(match.group(1))
+        else:
+            return -1  # if no epoch found, put it at the start
+    checkpoints.sort(key=extract_epoch, reverse=True)
     return checkpoints[0] if checkpoints else None
 
 
@@ -215,7 +257,7 @@ def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: to
         model with loaded weights
     """
     
-    last_checkpoint = find_last_checkpoint(Path(model_dir) / "checkpoints/train")
+    last_checkpoint = find_best_checkpoint(Path(model_dir) / "checkpoints/val")
     if last_checkpoint is None:
         raise FileNotFoundError(f"No checkpoint found in {model_dir}")
     
