@@ -1,6 +1,6 @@
 defaults:
-  - base: base
-  - defaults: defaults
+  - base/base
+  - defaults/defaults
   - _self_
 
 name: toy_dataset
@@ -14,7 +14,7 @@ log_every_iters: 1
 eval_every_epochs: 1
 num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
 backend: gloo  # or nccl
-engine_type: monai # or monai or ignite
+engine_type: monai # either monai or ignite
 roi_size: [64,64,8] # native roi size for model
 
 model:
@@ -41,7 +41,6 @@ dataset:
       - type: Orientation
         axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
       - type: RandSpatialCrop
-        # roi_size: [224, 224, 64] # crop size for training
         roi_size: ${roi_size} # crop size for training
         random_size: false # use fixed size for cropping
         random_center: false # use random center for cropping
@@ -71,7 +70,7 @@ lr_scheduler:
   power: 0.8 # power for the polynomial decay
 
 handlers:
-  train:  # Note: we copied handlers from base.yaml, otherwise they are overwritten (need to convert to e.g. dict? although order may not be preserved)
+  train:
     - _target_: monai.handlers.CheckpointSaver
       _convert_: partial
       _requires_: [save_dict, save_dir]

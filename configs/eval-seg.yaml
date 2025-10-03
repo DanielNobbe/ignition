@@ -1,0 +1,150 @@
+name: seg_eval_v0
+mode: eval
+task: segmentation # task type, only supports segmentation for now
+model_type: ignition
+model_dir: logs/a-model-log-dir
+
+debug: false
+seed: 777 # random seed
+output_dir: ./results
+output_prefix: ${name}
+
+eval_batch_size: 10 # batch size for evaluation
+num_workers: 16 # number of workers for data loading
+roi_size: [192, 192, 64]
+spacing: [1.0, 1.0, 3.0]
+use_amp: false
+backend: nccl
+engine_type: monai
+
+num_classes: 12 # number of classes including background
+
+inferer:  # set to null to disable sliding window inference
+  _target_: monai.inferers.SlidingWindowInferer
+  roi_size: ${roi_size} # roi size for inference
+  sw_batch_size: ${eval_batch_size} # sliding window batch size
+  overlap: 0.25
+  mode: 'constant' # blending mode, can be 'constant' or 'gaussian'
+  sigma_scale: 0.125 # scale for gaussian blending, only used if mode is 'gaussian'
+  progress: true # show progress bar during inference
+
+dataset:
+  type: MonaiEvalSegmentationFolder
+  images_dir: /ignition/example/dataset/images # images path
+  labels_dir: /ignition/example/dataset/labels # labels path
+  subset_size: null # use all samples, set to a number between 0 and 1 to use a subset of the dataset
+  cache_mode: memory # cache mode, can be 'memory' of 'lmdb'
+  cache_num: 25 # number of samples to cache in memory, required if cache_mode is 'memory'
+  orig_labels:   [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+  target_labels: [0, 0, 1, 2, 0, 3, 4, 5, 6, 7,  8,  9, 10, 11,  0]
+  transforms:
+      - type: MapLabelValue # to exclude specified labels by mapping them to background
+        orig_labels:   ${dataset.orig_labels}
+        target_labels: ${dataset.target_labels}
+      - type: EnsureChannelFirst
+        channel_dim: no_channel  # to automatically add channel dimension if not present
+      - type: SpatialPad
+        spatial_size: ${roi_size} # pad to at least the roi size
+        mode: 'constant' # padding mode
+        constant_values: 0 # padding value
+      - type: Orientation
+        axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
+      - type: AsDiscreteLabel
+        argmax: false  # do not apply argmax, since label is not one-hot encoded
+        to_onehot: ${num_classes}  # do not convert to one-hot encoding, since label is not one-hot encoded
+        include_background: true  # include background class in the discretization
+      - type: Spacing
+        pixdim: ${spacing} # pixel dimensions for the image
+        mode: ['bilinear', 'bilinear'] # can only use bilinear on label if one-hot encoded
+        align_corners: null # align corners for the interpolation, set to null for default behavior
+      - type: AsDiscreteLabel
+        argmax: true  # do not apply argmax, since label is not one-hot encoded
+        to_onehot: null  # do not convert to one-hot encoding, since label is not one-hot encoded
+        include_background: true  # include background class in the discretization
+      - type: NormalizeIntensity
+        nonzero: true # normalize only non-zero values
+        channel_wise: true # normalize each channel separately
+        subtrahend: null # subtrahend for normalization
+        divisor: null # divisor for normalization
+post_transforms: # TODO: Check if model already does a softmax? may need to add activation here
+  _target_: monai.transforms.Compose
+  transforms:
+    - _target_: monai.transforms.Activationsd
+      keys: ['pred']  # keys to apply the activation to
+      softmax: true
+    - _target_: monai.transforms.AsDiscreted
+      keys: ['pred']  # keys to apply the discretization to
+      argmax: true  # apply argmax to the predictions
+      to_onehot: null
+      include_background: true  # include background class in the discretization
+  # first save image because it needs to have 3D shape with values for labels
+    - _target_: monai.transforms.SaveImageD
+      _requires_: [output_dir]  # require output_dir to be defined
+      keys: ['image']  # keys to save the images
+      output_postfix: 'image'  # postfix to add to the saved images
+      output_dtype: 'float32'  # data type for the saved images
+      separate_folder: true  # save each image in a separate folder
+      print_log: true  # print log message when saving images
+      output_ext: '.nii.gz'  # file extension for the saved images
+    - _target_: monai.transforms.SaveImageD
+      _requires_: [output_dir]  # require output_dir to be defined
+      keys: ['pred']  # keys to save the images
+      output_postfix: 'pred'  # postfix to add to the saved images
+      output_dtype: 'uint8'  # data type for the saved preds (should be uint16 if more than 255 classes)
+      separate_folder: true  # save each image in a separate folder
+      print_log: true  # print log message when saving images
+      output_ext: '.nii.gz'  # file extension for the saved images
+    - _target_: monai.transforms.SaveImageD
+      _requires_: [output_dir]  # require output_dir to be defined
+      keys: ['label']  # keys to save the images
+      output_postfix: 'label'  # postfix to add to the saved images
+      output_dtype: 'uint8'  # data type for the saved labels (should be uint16 if more than 255 classes)
+      separate_folder: true  # save each image in a separate folder
+      print_log: true  # print log message when saving images
+      output_ext: '.nii.gz'  # file extension for the saved images
+    - _target_: monai.transforms.AsDiscreted
+      keys: ['pred']  # keys to apply the discretization to
+      argmax: false  # apply argmax to the predictions
+      to_onehot: ${num_classes}  # convert to one-hot encoding  -- already one-hot from output
+      include_background: true  # include background class in the discretization
+    - _target_: monai.transforms.AsDiscreted
+      keys: ['label']  # keys to apply the discretization to
+      argmax: false  # apply argmax to the predictions
+      to_onehot: ${num_classes}  # convert to one-hot encoding
+      include_background: true  # include background class in the discretization
+      
+
+metrics:
+  list:
+  - _target_: monai.handlers.MeanDice
+    _key_: mean_dice
+    include_background: true
+    reduction: mean_batch
+    return_with_label: true
+    output_transform: 
+      _target_: monai.handlers.from_engine
+      keys: ['pred', 'label']  # keys to extract from the output
+  - _target_: monai.handlers.MeanDice
+    _key_: mean_dice_fg
+    include_background: false
+    output_transform: 
+      _target_: monai.handlers.from_engine
+      keys: ['pred', 'label']  # keys to extract from the output
+  - _target_: monai.handlers.MeanIoUHandler
+    _key_: mean_iou
+    include_background: true
+    output_transform: 
+      _target_: monai.handlers.from_engine
+      keys: ['pred', 'label']  # keys to extract from the output
+  - _target_: monai.handlers.ConfusionMatrix
+    _key_: conf_matrix  # TODO: Implement conf matrix with all metrics
+    metric_name: "f1 score"
+    include_background: true
+    output_transform:
+      _target_: monai.handlers.from_engine
+      keys: ['pred', 'label']  # keys to extract from the output
+  key_metric_name: ${metrics.list[0]._key_} # name of the key metric for validation, used for early stopping and checkpointing
+
+engine_handlers:
+  - _target_: monai.handlers.MetricsSaver
+    save_dir: ${output_dir}

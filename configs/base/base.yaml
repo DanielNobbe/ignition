@@ -10,7 +10,7 @@ handlers:
       save_key_metric: false
       epoch_level: true
       save_interval: 5
-      n_saved: 5
+      n_saved: 1
     - _target_: monai.handlers.ValidationHandler
       _requires_: validator
       interval: ${eval_every_epochs} # validate every epoch
@@ -36,6 +36,7 @@ handlers:
       epoch_level: true
       save_interval: 5
       key_metric_n_saved: 1
+      n_saved: 1
       key_metric_greater_or_equal: true
     - _target_: monai.handlers.StatsHandler
       iteration_log: false
