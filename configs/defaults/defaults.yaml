@@ -60,7 +60,6 @@ post_transforms:
         argmax: false  # apply argmax to the predictions
         to_onehot: ${num_classes}  # convert to one-hot encoding
         include_background: true  # include background class in the discretization
-        # it seems the label is not one-hot encoded, but we also don't need to argmax, since there is a threshold already. But we don't need that either
 
 metrics:
   val:  # by default, the first metric is used as the 'key' metric
@@ -95,6 +94,6 @@ metrics:
       _requires_: loss_fn
       output_transform:
         _target_: monai.handlers.from_engine
-        keys: ['pred', 'label']  # keys to extract from the output, not sure why we can't just use 'loss' here
+        keys: ['pred', 'label']
   val_key_metric_name: ${metrics.val[0]._key_} # name of the key metric for validation, used for early stopping and checkpointing
   train_key_metric_name: ${metrics.train[0]._key_} # name of the key metric for training, used for logging
