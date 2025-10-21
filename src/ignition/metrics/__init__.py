@@ -1,4 +1,5 @@
 from typing import Any, Callable, Dict
+from warnings import warn
 
 from hydra.utils import instantiate
 from ignite.engine import Engine
@@ -41,7 +42,7 @@ def setup_metrics(
     loss_fn: Callable | None = None,
     model: Module | None = None,
     trainer: Engine | None = None,
-) -> Dict[str, Metric]:
+) -> Dict[str, Metric] | None:
     """Setup metrics based on the configuration."""
 
     instantiate_kwargs = {
@@ -54,7 +55,8 @@ def setup_metrics(
     metrics_key = metrics_name if metrics_name is not None else "list"
     metrics_config_list = config.metrics.get(metrics_key, [])
     if not metrics_config_list:
-        raise ValueError(f"No metrics found in config for '{metrics_name}'." if metrics_name else "No metrics found in config.")
+        warn(f"No metrics found in config for '{metrics_name}'." if metrics_name else "No metrics found in config.")
+        return None
 
     for metric_config in metrics_config_list:
         metric_config = metric_config.copy()

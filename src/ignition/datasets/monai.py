@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from warnings import warn
 
+from hydra.utils import instantiate
 from ignite.utils import convert_tensor
 from monai.data import CacheDataset, LMDBDataset, DataLoader
 from monai.transforms import (
@@ -42,6 +43,11 @@ class MonaiTransformsMixin:
         # TODO: Move to transforms file
         # TODO: Move to hydra instantiate
         # Selected transforms are based on https://github.com/Project-MONAI/tutorials/blob/main/3d_segmentation/brats_segmentation_3d.ipynb
+
+        if '_target_' in transform.keys():
+            hy_config = transform.copy()
+            return instantiate(hy_config)
+
         match transform.type:
             case "SpatialPad":
                 return SpatialPadd(
@@ -316,13 +322,6 @@ class SegmentationFolder(MonaiFolderUtilsMixin, PairedDataset, MonaiTransformsMi
         # NOTE: By using MONAI Dataloader,
         # we are incompatible with multi-node training,
         # but multi-GPU training should work fine.
-        self.train_dataloader = DataLoader(
-            self.train_dataset,
-            num_workers=self.config.get("num_workers", 1),
-            batch_size=self.config.batch_size,
-            shuffle=True,
-            drop_last=True,
-        )
 
         if self.config.get("inferer") is not None:
             # if using custom inferer, we use batch size of 1,
@@ -334,6 +333,22 @@ class SegmentationFolder(MonaiFolderUtilsMixin, PairedDataset, MonaiTransformsMi
         else:
             # otherwise, we use the eval batch size from the config
             eval_batch_size = self.config.eval_batch_size
+
+        if self.config.get("train_inferer", False):
+            warn(
+                f"Using custom inferer {self.config.train_inferer.get('_target_', 'unknown')}, setting eval batch size to 1. Inferer may handle batching. "
+            )
+            batch_size = 1
+        else:
+            batch_size = self.config.batch_size
+
+        self.train_dataloader = DataLoader(
+            self.train_dataset,
+            num_workers=self.config.get("num_workers", 1),
+            batch_size=batch_size,  # if using sliding window inference, batch size is 1
+            shuffle=True,
+            drop_last=True,
+        )
 
         self.val_dataloader = DataLoader(
             self.val_dataset,
