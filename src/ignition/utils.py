@@ -239,6 +239,26 @@ def get_model_config(model_dir, config_name="config-lock.yaml"):
     return model_config
 
 
+def load_pretrained_weights(config: DictConfig, model: torch.nn.Module, logger: Logger):
+    """Load pretrained weights, if specified in the config."""
+    if config.get("pretrained"):
+        weights_file = config.pretrained.get("weights_file", None)
+        if weights_file is None:
+            raise ValueError("If 'pretrained' is specified in the config, 'weights_file' must be provided.")
+        if not Path(weights_file).exists():
+            raise FileNotFoundError(f"Pretrained weights file {weights_file} does not exist.")
+        
+        logger.info(f"Loading pretrained weights from {weights_file}")
+        checkpoint = torch.load(weights_file, map_location="cpu")
+
+        if "model" in checkpoint:
+            state_dict = checkpoint["model"]
+        else:
+            state_dict = checkpoint
+        model.load_state_dict(state_dict, strict=config.pretrained.get("strict", True))  # TODO: Check the structure of the state dict, if anything gets loaded correctly
+        logger.info("Successfully loaded pretrained weights.")
+
+
 def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: torch.nn.Module, logger: Logger):
     """Load model weights from the best checkpoint for evaluation.
 

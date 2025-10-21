@@ -69,6 +69,10 @@ def train(config: DictConfig):
     # model, optimizer, loss function, device
     device = idist.device()
     model = idist.auto_model(setup_model(config))
+
+    if config.get("pretrained") is not None:
+        load_pretrained_weights(config, model, logger)
+
     optimizer = idist.auto_optim(setup_optimizer(model.parameters(), config))
     loss_fn = setup_loss(config).to(device=device)
     lr_scheduler = setup_lr_scheduler(optimizer, config, le)
@@ -92,10 +96,10 @@ def train(config: DictConfig):
             dataloader_train,
             max_epochs=config.max_epochs,
         )
-    elif config.engine_type == "monai":
+    elif config.engine_type in ["monai", "vista3d"]:
         trainer.run()
     else:
-        raise ValueError(f"Unknown engine type: {config.engine_type}. Supported types are 'ignite' and 'monai'.")
+        raise ValueError(f"Unknown engine type: {config.engine_type}. Supported types are 'ignite', 'monai' and 'vista3d.")
     
     logger.info("Training completed successfully!")
 
@@ -162,7 +166,7 @@ def evaluate(config: DictConfig):
 
     if config.engine_type == "ignite":
         evaluator.run(dataset.get_dataloader())
-    elif config.engine_type == "monai":
+    elif config.engine_type in ["monai", "vista3d"]:
         evaluator.run()
     else:
         raise ValueError(f"Unknown engine type: {config.engine_type}. Supported types are 'ignite' and 'monai'.")
