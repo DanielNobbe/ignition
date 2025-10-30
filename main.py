@@ -196,8 +196,12 @@ def main(cfg: DictConfig):
         print(f"Resuming from {cfg.resume}")
 
     config = setup_config(cfg)
-    with idist.Parallel(config.backend) as p:
-        p.run(run, config=config)
+
+    if config.get("distributed", False):
+        with idist.Parallel(config.backend) as p:
+            p.run(run, config=config)
+    else:
+        run(0, config)
 
 
 
