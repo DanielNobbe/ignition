@@ -112,37 +112,22 @@ class SegmentationFolder(MonaiFolderUtilsMixin, PairedDataset, MonaiTransformsMi
         if self.config.get("inferer") is not None:
             # if using custom inferer, we use batch size of 1,
             # since it may do custom batching
-            eval_batch_size = 1
+            self.eval_batch_size = 1
             warn(
                 f"Using custom inferer {self.config.inferer.get('_target_', 'unknown')}, setting eval batch size to 1. Inferer may handle batching. "
             )
         else:
             # otherwise, we use the eval batch size from the config
-            eval_batch_size = self.config.eval_batch_size
+            self.eval_batch_size = self.config.eval_batch_size
 
         if self.config.get("train_inferer", False):
             warn(
                 f"Using custom inferer {self.config.train_inferer.get('_target_', 'unknown')}, setting eval batch size to 1. Inferer may handle batching. "
             )
-            batch_size = 1
+            self.train_batch_size = 1
         else:
-            batch_size = self.config.batch_size
+            self.train_batch_size = self.config.batch_size
 
-        self.train_dataloader = DataLoader(
-            self.train_dataset,
-            num_workers=self.config.get("num_workers", 1),
-            batch_size=batch_size,  # if using sliding window inference, batch size is 1
-            shuffle=True,
-            drop_last=True,
-        )
-
-        self.val_dataloader = DataLoader(
-            self.val_dataset,
-            num_workers=self.config.get("num_workers", 1),
-            batch_size=eval_batch_size,  # if using sliding window inference, batch size is 1
-            shuffle=False,
-            drop_last=False,
-        )
 
     def _get_train_transforms(self):
         transforms = []
@@ -169,10 +154,28 @@ class SegmentationFolder(MonaiFolderUtilsMixin, PairedDataset, MonaiTransformsMi
         return Compose(transforms)
 
     def get_train_dataloader(self):
-        return self.train_dataloader
+        return DataLoader(
+            self.train_dataset,
+            num_workers=self.config.get("num_workers", 1),
+            batch_size=self.train_batch_size,  # if using sliding window inference, batch size is 1
+            shuffle=True,
+            drop_last=True,
+        )
 
     def get_val_dataloader(self):
-        return self.val_dataloader
+        return DataLoader(
+            self.val_dataset,
+            num_workers=self.config.get("num_workers", 1),
+            batch_size=self.eval_batch_size,  # if using sliding window inference, batch size is 1
+            shuffle=False,
+            drop_last=False,
+        )
+    
+    def get_train_dataset(self):
+        return self.train_dataset
+    
+    def get_val_dataset(self):
+        return self.val_dataset
 
 
 class EvalSegmentationFolder(IgnitionDataset, MonaiTransformsMixin, MonaiFolderUtilsMixin, MonaiDatasetUtilsMixin):
@@ -230,21 +233,13 @@ class EvalSegmentationFolder(IgnitionDataset, MonaiTransformsMixin, MonaiFolderU
         if self.config.get("inferer") is not None:
             # if using custom inferer, we use batch size of 1,
             # since it may do custom batching
-            eval_batch_size = 1
+            self.eval_batch_size = 1
             warn(
                 f"Using custom inferer {self.config.inferer.get('_target_', 'unknown')}, setting eval batch size to 1. Inferer may handle batching. "
             )
         else:
             # otherwise, we use the eval batch size from the config
-            eval_batch_size = self.config.eval_batch_size
-
-        self.dataloader = DataLoader(
-            self.dataset,
-            num_workers=self.config.get("num_workers", 1),
-            batch_size=eval_batch_size,
-            shuffle=False,
-            drop_last=False,
-        )
+            self.eval_batch_size = self.config.eval_batch_size
 
     def _get_transforms(self):
         transforms = []
@@ -256,5 +251,17 @@ class EvalSegmentationFolder(IgnitionDataset, MonaiTransformsMixin, MonaiFolderU
             transforms.append(self._get_transform(transform))
 
         return Compose(transforms)
+    
+    def get_dataloader(self):
+        return DataLoader(
+            self.dataset,
+            num_workers=self.config.get("num_workers", 1),
+            batch_size=self.eval_batch_size,
+            shuffle=False,
+            drop_last=False,
+        )
+    
+    def get_dataset(self):
+        return self.dataset
         
     

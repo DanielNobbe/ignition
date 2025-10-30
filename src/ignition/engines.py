@@ -256,7 +256,7 @@ def setup_trainer(
             trainer = SupervisedTrainer(
                 device=device,
                 max_epochs=config.max_epochs,
-                train_data_loader=idist.auto_dataloader(dataset.get_train_dataloader()),
+                train_data_loader=idist.auto_dataloader(dataset.get_train_dataset()),
                 network=model,
                 inferer=instantiate(config.inferer) if config.get("train_inferer") else None,
                 optimizer=optimizer,
@@ -276,7 +276,7 @@ def setup_trainer(
                 label_map=config.get("vista3d_label_map"),
                 device=device,
                 max_epochs=config.max_epochs,
-                train_data_loader=idist.auto_dataloader(dataset.get_train_dataloader()),
+                train_data_loader=idist.auto_dataloader(dataset.get_train_dataset()),
                 network=model,
                 inferer=instantiate(config.train_inferer) if config.get("train_inferer") else None,
                 optimizer=optimizer,
@@ -327,8 +327,8 @@ def setup_evaluator(
             # in a paired dataset, we get the val dataloader
             # otherwise, we get the single dataloader
             # TODO: Make this configurable?
-            dataloader = dataset.get_val_dataloader() if isinstance(dataset, PairedDataset) else dataset.get_dataloader()
-            dataloader = idist.auto_dataloader(dataloader)
+            dataset = dataset.get_val_dataset() if isinstance(dataset, PairedDataset) else dataset.get_dataset()
+            dataloader = idist.auto_dataloader(dataset)
 
             post_transforms = instantiate_post_transforms(
                 config.post_transforms.get(name) if name is not None else config.post_transforms,
@@ -353,8 +353,8 @@ def setup_evaluator(
 
             # in a paired dataset, we get the val dataloader
             # otherwise, we get the single dataloader
-            dataloader = dataset.get_val_dataloader() if isinstance(dataset, PairedDataset) else dataset.get_dataloader()
-            dataloader = idist.auto_dataloader(dataloader)
+            dataset = dataset.get_val_dataset() if isinstance(dataset, PairedDataset) else dataset.get_dataset()
+            dataloader = idist.auto_dataloader(dataset)
             post_transforms = instantiate_post_transforms(
                 config.post_transforms.get(name) if name is not None else config.post_transforms,
                 **instantiate_kwargs,
