@@ -62,7 +62,7 @@ def train(config: DictConfig):
 
     # load datasets and create dataloaders
     dataset = setup_dataset(config)
-    dataloader_train = dataset.get_train_dataloader()
+    dataloader_train = idist.auto_dataloader(dataset.get_train_dataloader())
     dataloader_val = dataset.get_val_dataloader()
     le = len(dataloader_train)
 
@@ -93,7 +93,7 @@ def train(config: DictConfig):
     # setup if done. let's run the training
     if config.engine_type == "ignite":
         trainer.run(
-            dataloader_train,
+            idist.auto_dataloader(dataloader_train),
             max_epochs=config.max_epochs,
         )
     elif config.engine_type in ["monai", "vista3d"]:
@@ -165,7 +165,7 @@ def evaluate(config: DictConfig):
     # TODO: Add things to log all images (post transform), and any other scores
 
     if config.engine_type == "ignite":
-        evaluator.run(dataset.get_dataloader())
+        evaluator.run(idist.auto_dataloader(dataset.get_dataloader()))
     elif config.engine_type in ["monai", "vista3d"]:
         evaluator.run()
     else:
@@ -209,4 +209,5 @@ if __name__ == "__main__":
     sys.argv.append("hydra.run.dir=.")
     sys.argv.append("hydra.output_subdir=null")
     sys.argv.append("hydra/job_logging=stdout")
+
     main()

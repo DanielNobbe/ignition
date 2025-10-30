@@ -8,6 +8,7 @@ from hydra.utils import instantiate
 from omegaconf import DictConfig, ListConfig
 from ignite.engine import DeterministicEngine, Engine, create_supervised_evaluator, create_supervised_trainer
 from ignite.metrics import Metric
+import ignite.distributed as idist
 from monai.engines import SupervisedEvaluator, SupervisedTrainer
 from torch.amp import GradScaler
 from torch.nn import Module
@@ -21,6 +22,7 @@ from ignition.utils import split_dict_at_index
 from monai.utils.enums import CommonKeys as Keys
 from monai.engines.utils import IterationEvents
 from monai.transforms import reset_ops_id
+
 
 
 logger = logging.getLogger(__name__)
@@ -254,7 +256,7 @@ def setup_trainer(
             trainer = SupervisedTrainer(
                 device=device,
                 max_epochs=config.max_epochs,
-                train_data_loader=dataset.get_train_dataloader(),
+                train_data_loader=idist.auto_dataloader(dataset.get_train_dataloader()),
                 network=model,
                 inferer=instantiate(config.inferer) if config.get("train_inferer") else None,
                 optimizer=optimizer,
@@ -274,7 +276,7 @@ def setup_trainer(
                 label_map=config.get("vista3d_label_map"),
                 device=device,
                 max_epochs=config.max_epochs,
-                train_data_loader=dataset.get_train_dataloader(),
+                train_data_loader=idist.auto_dataloader(dataset.get_train_dataloader()),
                 network=model,
                 inferer=instantiate(config.train_inferer) if config.get("train_inferer") else None,
                 optimizer=optimizer,
@@ -326,6 +328,7 @@ def setup_evaluator(
             # otherwise, we get the single dataloader
             # TODO: Make this configurable?
             dataloader = dataset.get_val_dataloader() if isinstance(dataset, PairedDataset) else dataset.get_dataloader()
+            dataloader = idist.auto_dataloader(dataloader)
 
             post_transforms = instantiate_post_transforms(
                 config.post_transforms.get(name) if name is not None else config.post_transforms,
@@ -351,6 +354,7 @@ def setup_evaluator(
             # in a paired dataset, we get the val dataloader
             # otherwise, we get the single dataloader
             dataloader = dataset.get_val_dataloader() if isinstance(dataset, PairedDataset) else dataset.get_dataloader()
+            dataloader = idist.auto_dataloader(dataloader)
             post_transforms = instantiate_post_transforms(
                 config.post_transforms.get(name) if name is not None else config.post_transforms,
                 **instantiate_kwargs,
