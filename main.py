@@ -1,4 +1,5 @@
 import sys
+import os
 from functools import partial
 from pprint import pformat
 from typing import Any, cast
@@ -35,6 +36,8 @@ def train(config: DictConfig):
     """Main training function.
     Performs training logic."""
 
+    print("Initialising training...")
+
     world_size = idist.get_world_size()
     if world_size > 1:
         warn(
@@ -57,7 +60,8 @@ def train(config: DictConfig):
     config.output_dir = output_dir
 
     # setup basic logger
-    logger = setup_logging(config)
+    logger = setup_logging(config)  # only logs on rank 0
+
     logger.info("Configuration: \n%s", pformat(config))
 
     # load datasets and create dataloaders
@@ -66,9 +70,16 @@ def train(config: DictConfig):
     dataloader_val = dataset.get_val_dataloader()
     le = len(dataloader_train)
 
-    # model, optimizer, loss function, device
     device = idist.device()
-    model = idist.auto_model(setup_model(config))
+
+
+    model = idist.auto_model(
+        setup_model(config)
+    )
+    
+    if config.get("compile", False):
+        model = torch.compile(model)
+        logger.info("Model compiled with torch.compile.")
 
     if config.get("pretrained") is not None:
         load_pretrained_weights(config, model, logger)
@@ -165,7 +176,8 @@ def evaluate(config: DictConfig):
     # TODO: Add things to log all images (post transform), and any other scores
 
     if config.engine_type == "ignite":
-        evaluator.run(idist.auto_dataloader(dataset.get_dataset()))
+        from monai.data.utils import list_data_collate
+        evaluator.run(idist.auto_dataloader(dataset.get_dataset(), collate_fn=list_data_collate))
     elif config.engine_type in ["monai", "vista3d"]:
         evaluator.run()
     else:
@@ -173,7 +185,8 @@ def evaluate(config: DictConfig):
     
     logger.info("Evaluation complete.")
 
-def run(local_rank: int, config: Any):
+def run(config: Any):
+    """Run training or evaluation based on config mode."""
     if config.mode == "train":
         train(config)
     elif config.mode == "eval":
@@ -189,7 +202,6 @@ def run(local_rank: int, config: Any):
     config_name="config.yaml",
 )
 def main(cfg: DictConfig):
-
     if cfg.get("resume") is not None:
         
         cfg = resume_from_log(cfg.resume)
@@ -197,11 +209,21 @@ def main(cfg: DictConfig):
 
     config = setup_config(cfg)
 
-    if config.get("distributed", False):
-        with idist.Parallel(config.backend) as p:
-            p.run(run, config=config)
+    # Check if we're launched by torchrun (check for environment variables)
+    world_size = int(os.environ.get('WORLD_SIZE'))
+
+    if world_size > 1:
+        if int(os.environ.get('LOCAL_RANK')) == 0:
+            print(f"Running on {world_size} processes.")
+        idist.initialize(config.backend)  # NOTE: We can't use idist.Parallel, it conflicts with Hydra
+
+        # Now run your training function
+        run(config)
+
+        idist.finalize()
     else:
-        run(0, config)
+        print("Running on single process.")
+        run(config)
 
 
 
