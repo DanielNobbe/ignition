@@ -129,7 +129,6 @@ def setup_output_dir(config: Any, rank: int) -> Path:
         print(f"Created output directory at: {path}", flush=True)
     output_dir = path.as_posix()
     return output_dir
-    # return Path(idist.broadcast(output_dir, src=0))  # hmm so this is how you would broadcast it?
 
 
 def save_config(config, output_dir):
@@ -153,7 +152,6 @@ def setup_logging(config: Any) -> Logger:
     """
     green = "\033[32m"
     reset = "\033[0m"
-    print("Setting up logger...", flush=True)
     logger = setup_logger(
         name=f"{green}[ignite]{reset}",
         level=logging.DEBUG if config.debug else logging.INFO,
@@ -162,7 +160,6 @@ def setup_logging(config: Any) -> Logger:
     )
     sys.stdout.reconfigure(line_buffering=True)
     sys.stderr.reconfigure(line_buffering=True)
-    print(f"Logger set up at rank {idist.get_rank()}.", flush=True)
     return logger
 
 
