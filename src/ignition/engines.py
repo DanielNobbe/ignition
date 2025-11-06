@@ -22,6 +22,7 @@ from ignition.utils import split_dict_at_index
 from monai.utils.enums import CommonKeys as Keys
 from monai.engines.utils import IterationEvents
 from monai.transforms import reset_ops_id
+from monai.data.utils import list_data_collate
 
 
 
@@ -256,7 +257,12 @@ def setup_trainer(
             trainer = SupervisedTrainer(
                 device=device,
                 max_epochs=config.max_epochs,
-                train_data_loader=idist.auto_dataloader(dataset.get_train_dataset()),
+                train_data_loader=idist.auto_dataloader(
+                    dataset.get_train_dataset(),
+                    collate_fn=list_data_collate,
+                    batch_size=dataset.train_batch_size if isinstance(dataset, PairedDataset) else config.train_batch_size
+                ),
+                amp=config.get("use_amp", False),
                 network=model,
                 inferer=instantiate(config.inferer) if config.get("train_inferer") else None,
                 optimizer=optimizer,
@@ -276,7 +282,12 @@ def setup_trainer(
                 label_map=config.get("vista3d_label_map"),
                 device=device,
                 max_epochs=config.max_epochs,
-                train_data_loader=idist.auto_dataloader(dataset.get_train_dataset()),
+                train_data_loader=idist.auto_dataloader(
+                    dataset.get_train_dataset(),
+                    collate_fn=list_data_collate,
+                    batch_size=dataset.train_batch_size if isinstance(dataset, PairedDataset) else config.train_batch_size
+                ),
+                amp=config.get("use_amp", False),
                 network=model,
                 inferer=instantiate(config.train_inferer) if config.get("train_inferer") else None,
                 optimizer=optimizer,
@@ -327,8 +338,12 @@ def setup_evaluator(
             # in a paired dataset, we get the val dataloader
             # otherwise, we get the single dataloader
             # TODO: Make this configurable?
-            dataset = dataset.get_val_dataset() if isinstance(dataset, PairedDataset) else dataset.get_dataset()
-            dataloader = idist.auto_dataloader(dataset)
+            val_dataset = dataset.get_val_dataset() if isinstance(dataset, PairedDataset) else dataset.get_dataset()
+            dataloader = idist.auto_dataloader(
+                val_dataset,
+                collate_fn=list_data_collate,
+                batch_size=dataset.eval_batch_size if isinstance(dataset, (PairedDataset, IgnitionDataset)) else config.eval_batch_size
+            )
 
             post_transforms = instantiate_post_transforms(
                 config.post_transforms.get(name) if name is not None else config.post_transforms,
@@ -338,6 +353,7 @@ def setup_evaluator(
             evaluator = SupervisedEvaluator(
                 device=device,
                 val_data_loader=dataloader,
+                amp=config.get("use_amp", False),
                 network=model,
                 inferer=instantiate(config.inferer) if config.get("inferer") else None,
                 postprocessing=post_transforms,
@@ -353,8 +369,13 @@ def setup_evaluator(
 
             # in a paired dataset, we get the val dataloader
             # otherwise, we get the single dataloader
-            dataset = dataset.get_val_dataset() if isinstance(dataset, PairedDataset) else dataset.get_dataset()
-            dataloader = idist.auto_dataloader(dataset)
+            val_dataset = dataset.get_val_dataset() if isinstance(dataset, PairedDataset) else dataset.get_dataset()
+            
+            dataloader = idist.auto_dataloader(
+                val_dataset,
+                collate_fn=list_data_collate,
+                batch_size=dataset.eval_batch_size if isinstance(dataset, (PairedDataset, IgnitionDataset)) else config.eval_batch_size
+            )
             post_transforms = instantiate_post_transforms(
                 config.post_transforms.get(name) if name is not None else config.post_transforms,
                 **instantiate_kwargs,
@@ -363,6 +384,7 @@ def setup_evaluator(
                 label_map=config.get("vista3d_label_map"),
                 device=device,
                 val_data_loader=dataloader,
+                amp=config.get("use_amp", False),
                 network=model,
                 inferer=instantiate(config.inferer) if config.get("inferer") else None,
                 postprocessing=post_transforms,
