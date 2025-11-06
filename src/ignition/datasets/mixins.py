@@ -5,7 +5,8 @@ from warnings import warn
 from hydra.utils import instantiate
 from ignite.utils import convert_tensor
 
-from monai.data import CacheDataset, LMDBDataset, DataLoader
+from monai.data import Dataset, CacheDataset, LMDBDataset, DataLoader
+from monai.data.utils import pickle_hashing
 from monai.transforms import (
     AsDiscreted,
     EnsureChannelFirstd,
@@ -218,5 +219,11 @@ class MonaiDatasetUtilsMixin:
                 return LMDBDataset(
                     data=data_list,
                     transform=transforms,
-                    cache_dir=dataset_config.cache_dir
+                    cache_dir=dataset_config.cache_dir,
+                    hash_transform=pickle_hashing
+                )
+            case _:
+                return Dataset(
+                    data=data_list,
+                    transform=transforms,
                 )
