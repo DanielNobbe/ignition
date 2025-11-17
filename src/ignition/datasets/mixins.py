@@ -3,10 +3,12 @@ from pathlib import Path
 from warnings import warn
 
 from hydra.utils import instantiate
+import hashlib
 from ignite.utils import convert_tensor
+import ignite.distributed as idist
 
-from monai.data import Dataset, CacheDataset, LMDBDataset, DataLoader
-from monai.data.utils import pickle_hashing
+from monai.data import Dataset, CacheDataset, LMDBDataset, PersistentDataset, DataLoader
+from monai.data.utils import pickle_hashing, json_hashing
 from monai.transforms import (
     AsDiscreted,
     EnsureChannelFirstd,
@@ -220,10 +222,86 @@ class MonaiDatasetUtilsMixin:
                     data=data_list,
                     transform=transforms,
                     cache_dir=dataset_config.cache_dir,
-                    hash_transform=pickle_hashing
+                    hash_transform=pickle_hashing,
+                    preload_distributed=idist.get_world_size() > 1,
+                    enable_preload=False
+                )
+            case "persistent":
+                if not dataset_config.get("cache_dir", False):
+                    raise ValueError("cache_dir must be specified in config when using persistent cache_mode.")
+                return PersistentDataset(
+                    data=data_list,
+                    transform=transforms,
+                    cache_dir=dataset_config.cache_dir,
+                    hash_transform=json_hashing,
                 )
             case _:
                 return Dataset(
                     data=data_list,
                     transform=transforms,
                 )
+
+    @staticmethod
+    def match_across_ranks(value, hash_function: callable = pickle_hashing, tag: str = ""):
+        """Check if all ranks have the same value for a given variable.
+
+        Args:
+            value: The variable to check across ranks.
+            hash_function: A function to hash the variable for comparison. Defaults to pickle_hashing.
+        Returns:
+            bool: True if all ranks have the same value, False otherwise.
+        """
+        rank = idist.get_rank()
+        world_size = idist.get_world_size()
+
+        if world_size <= 1:
+            return True
+        
+        tag_hash = pickle_hashing(tag)  # do not use hash_function, it may e.g. extract value from dict
+        tag_tensor = convert_tensor(tag_hash, device=idist.device(), non_blocking=True)
+        all_tags = idist.all_gather(tag_tensor)
+        all_tags_list = all_tags.tolist() if hasattr(all_tags, 'tolist') else list(all_tags)
+        if any(t != all_tags_list[0] for t in all_tags_list[1:]):
+            raise ValueError(f"Different tags across ranks for match_across_ranks: {all_tags_list}")
+
+        local_hash = hash_function(value)
+        combined_hash = pickle_hashing(f"{tag_hash}_{local_hash}")
+        # for idist to do this properly, we need to convert to tensor
+        combined_hash = convert_tensor(combined_hash, device=idist.device(), non_blocking=True)
+        # Gather all hashes from all ranks
+        all_hashes = idist.all_gather(combined_hash)
+
+        # Check if all hashes are the same
+        first_hash = all_hashes[0]
+        if any(h != first_hash for h in all_hashes[1:]):
+            print(f"Rank {rank} detected mismatch in value for tag '{tag}': {all_hashes.tolist()}")
+            return False
+        return True
+
+    @staticmethod
+    def list_match_across_ranks(values: list, hash_function: callable = lambda x: x, tag: str = ""):
+        """Check if all ranks have the same list of values.
+
+        Args:
+            values: The list of variables to check across ranks.
+            hash_function: A function to hash each variable for comparison. Defaults to identity function.
+        Returns:
+            bool: True if all ranks have the same list of values, False otherwise.
+        """
+
+        world_size = idist.get_world_size()
+        if world_size <= 1:
+            return True
+
+        length = len(values)
+        if not MonaiDatasetUtilsMixin.match_across_ranks(length, tag=tag + "_length"):
+            return False
+
+        if any(
+            not MonaiDatasetUtilsMixin.match_across_ranks(
+                values[i], hash_function=hash_function, tag=f"{tag}_item_{i}"
+            )
+            for i in range(length)
+        ):
+            return False
+        return True

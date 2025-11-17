@@ -3,6 +3,7 @@ from pathlib import Path
 from warnings import warn
 
 from hydra.utils import instantiate
+import ignite.distributed as idist
 from ignite.utils import convert_tensor
 from monai.data import CacheDataset, LMDBDataset, DataLoader
 from monai.transforms import (
@@ -169,6 +170,10 @@ class RiDatasetFromFile(PairedDataset, MonaiTransformsMixin, MonaiDatasetUtilsMi
                 raise ValueError("data_subset_size must result in at least one sample for both subsets.")
             self.train_data = self.train_data[:train_subset_size]
             self.val_data = self.val_data[:eval_subset_size]
+
+        if idist.get_world_size() > 1:
+            if not self.list_match_across_ranks(self.train_data, tag="train_data") or not self.list_match_across_ranks(self.val_data, tag="val_data"):
+                raise ValueError("Train and validation data lists do not match across ranks.")
 
         if self.config.dataset.get('save_dataset_splits'):
             # just save it all

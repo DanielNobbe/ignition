@@ -1,6 +1,7 @@
 import os
 from warnings import warn
 
+import ignite.distributed as idist
 from monai.data import DataLoader
 from monai.transforms import (
     Compose,
@@ -79,6 +80,10 @@ class SegmentationFolder(MonaiFolderUtilsMixin, PairedDataset, MonaiTransformsMi
                 raise ValueError("data_subset_size must result in at least one sample for both subsets.")
             self.train_data = self.train_data[:train_subset_size]
             self.val_data = self.val_data[:eval_subset_size]
+        
+        if idist.get_world_size() > 1:
+            if not self.list_match_across_ranks(self.train_data, tag="train_data") or not self.list_match_across_ranks(self.val_data, tag="val_data"):
+                raise ValueError("Train and validation data lists do not match across ranks.")
 
         # self.train_dataset = CacheDataset(
         #     data=self.train_data,
