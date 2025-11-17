@@ -14,6 +14,12 @@ from tensorboardX import SummaryWriter
 
 from ignition.utils import get_epoch_function
 
+from ignite.handlers.wandb_logger import WandBLogger
+from ignite.engine.events import Events
+import ignite.distributed as idist
+
+from ignition.wandb.utils import setup_wandb_logging
+
 """
 train_handlers:
 
@@ -51,7 +57,11 @@ def setup_handlers(
     lr_scheduler: LrScheduler | None = None,
 ):
     """Setup all handlers for the trainer and validator."""
-    writer = setup_tensorboard_writer(config, trainer, optimizer, validator)
+    if idist.get_rank() == 0:
+        writer = setup_tensorboard_writer(config, trainer, optimizer, validator)
+    else:
+        writer = None  # only log from rank 0
+    setup_wandb_logger(config, trainer, validator, optimizer)
 
     setup_train_handlers(
         config,
@@ -90,6 +100,49 @@ def log_config(config: DictConfig | ListConfig, writer):
     table = dict2mdtable(flattened_config, key="Hyperparameter", val="Value")
     # and finally, log a text scalar with a table
     writer.add_text("hyperparams", table)
+
+
+def setup_wandb_logger(config: DictConfig | ListConfig, trainer: Engine, validator: Engine, optimizer: Optimizer):
+    """Setup Weights and Biases logger."""
+    # wandb_logger = WandBLogger(
+    #     project=config.get("wandb_project", "ignition-project"),
+    #     name=config.name,
+    #     id=config.output_dir.split("/", 1)[-1],
+    #     config=dict(config),
+    #     save_dir=config.output_dir,
+    #     notes=config.get("notes", ""),
+    #     job_type="training"
+    # )
+
+    # wandb_logger.attach_output_handler(
+    #     trainer,
+    #     event_name=Events.ITERATION_COMPLETED,
+    #     tag="train",
+    #     output_transform=lambda x: x,
+        
+    # )
+
+    if not config.get("wandb_logging", False):
+        return  # wandb logging not enabled
+
+    if idist.get_rank() != 0:
+        return  # only log from rank 0
+
+    logger = setup_wandb_logging(
+        trainer,
+        optimizer,
+        validator,
+        config.log_every_iters,
+        project=config.get("wandb_project", "ignition-project"),
+        name=config.name,
+        dir=config.output_dir,
+        id=config.output_dir.split("/", 1)[-1],
+        config=dict(config),
+        notes=config.get("notes", ""),
+        job_type="training"
+    )
+
+    printer.info("Weights and Biases logger initialized.")
 
 
 def setup_tensorboard_writer(config: DictConfig | ListConfig, trainer, optimizers, evaluators):
@@ -146,7 +199,7 @@ def setup_train_handlers(
         "lr_scheduler": lr_scheduler,
         "validator": validator,
         "summary_writer": writer,
-        "save_dir": os.path.join(writer.logdir, "checkpoints/train/"),
+        "save_dir": os.path.join(config.output_dir, "checkpoints/train/"),
         "save_dict": {
             "model": model,
             "optimizer": optimizer,
@@ -185,7 +238,7 @@ def setup_validation_handlers(
     instantiate_kwargs = {
         "trainer": trainer,
         "summary_writer": writer,
-        "save_dir": os.path.join(writer.logdir, "checkpoints/val"),
+        "save_dir": os.path.join(config.output_dir, "checkpoints/val"),
         "save_dict": {
             "model": model,
         },
