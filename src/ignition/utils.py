@@ -82,6 +82,8 @@ def resume_from(
     logger: Logger,
     strict: bool = True,
     model_dir: Optional[str] = None,
+    strip_compiled: bool = False,
+    strip_ddp: bool = False,
 ) -> None:
     """Loads state dict from a checkpoint file to resume the training.
 
@@ -113,6 +115,15 @@ def resume_from(
         if not checkpoint_fp.exists():
             raise FileNotFoundError(f"Given {str(checkpoint_fp)} does not exist.")
         checkpoint = torch.load(checkpoint_fp, map_location="cpu")
+
+    if strip_compiled:
+        if "model" in to_load:
+            checkpoint["model"] = state_dict_strip_compiled(checkpoint["model"])
+            logger.info("Stripped '_orig_mod.' prefix from model state dict keys (from torch.compile).")
+    if strip_ddp:
+        if "model" in to_load:
+            checkpoint["model"] = state_dict_strip_ddp(checkpoint["model"])
+            logger.info("Stripped 'module.' prefix from model state dict keys (from DDP).")
 
     Checkpoint.load_objects(to_load=to_load, checkpoint=checkpoint, strict=strict)
     logger.info("Successfully resumed from a checkpoint: %s", checkpoint_fp)
@@ -288,9 +299,12 @@ def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: to
         raise FileNotFoundError(f"No checkpoint found in {model_dir}")
     
     logger.info(f"Loading model weights from checkpoint: {last_checkpoint}")
+
+    strip_compiled = not config.get("compile", False)  # if we're not evaluating with compile, we need to strip the compiled prefixes
+    strip_ddp = not config.get("distributed", False)  # if we're not evaluating with distributed, we need to strip the DDP prefixes
     
     to_load = {"model": model}
-    resume_from(to_load, last_checkpoint, logger, strict=True)
+    resume_from(to_load, last_checkpoint, logger, strict=True, strip_compiled=strip_compiled, strip_ddp=strip_ddp)
     
     return model
 
@@ -355,3 +369,31 @@ def simple_math_resolver(expr):
         raise ValueError("Only single + or - supported: 'a + b' or 'a - b'")
     a, op, b = int(m.group(1)), m.group(2), int(m.group(3))
     return a + b if op == "+" else a - b
+
+
+def state_dict_strip(state_dict: dict, target_prefix: str = "_orig_mod.") -> dict:
+    """Strip given prefix from state dict keys if present."""
+    new_state_dict = {}
+    for k, v in state_dict.items():
+        if k.startswith(target_prefix):
+            new_key = k[len(target_prefix) :]
+        else:
+            new_key = k
+        new_state_dict[new_key] = v
+    return new_state_dict
+
+
+def state_dict_strip_compiled(state_dict: dict) -> dict:
+    """Strip '_orig_mod.' prefix from state dict keys if present (from torch.compile)."""
+
+    target_prefix = "_orig_mod."
+
+    return state_dict_strip(state_dict, target_prefix)
+
+
+def state_dict_strip_ddp(state_dict: dict) -> dict:
+    """Strip 'module.' prefix from state dict keys if present (from DDP)."""
+
+    target_prefix = "module."
+
+    return state_dict_strip(state_dict, target_prefix)
