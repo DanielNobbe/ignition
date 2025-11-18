@@ -37,7 +37,7 @@ class IgnitionDataset(ABC):
         # is only one dataset
         self.config = config
         # this gives an error if the name is not found, which is fine
-        self.dataset = self._setup_dataset()
+        self._setup_dataset()
         # self.dataloader = self._setup_dataloader()
 
     @abstractmethod

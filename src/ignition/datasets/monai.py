@@ -238,13 +238,13 @@ class EvalSegmentationFolder(IgnitionDataset, MonaiTransformsMixin, MonaiFolderU
         if self.config.get("inferer") is not None:
             # if using custom inferer, we use batch size of 1,
             # since it may do custom batching
-            self.eval_batch_size = 1
+            self.config.eval_batch_size = 1
             warn(
                 f"Using custom inferer {self.config.inferer.get('_target_', 'unknown')}, setting eval batch size to 1. Inferer may handle batching. "
             )
         else:
             # otherwise, we use the eval batch size from the config
-            self.eval_batch_size = self.config.eval_batch_size
+            self.config.eval_batch_size = self.config.eval_batch_size
 
     def _get_transforms(self):
         transforms = []
