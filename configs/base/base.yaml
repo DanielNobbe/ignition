@@ -19,12 +19,13 @@ handlers:
     - _target_: monai.handlers.StatsHandler
       iteration_log: ${log_every_iters}
       epoch_log: false
-      tag_name: "train loss"
+      tag_name: "train_loss"
     - _target_: monai.handlers.TensorBoardStatsHandler
       _requires_: [summary_writer]
       iteration_log: ${log_every_iters}
       epoch_log: true
-      tag_name: "Train Loss"
+      tag_name: "Train_Loss_rank_0"
+      rank: 0  # only rank 0 will log
     - _target_: ignite.handlers.ProgressBar
       desc: "Training"
   validation:
@@ -42,6 +43,12 @@ handlers:
       iteration_log: false
       epoch_log: true
       tag_name: "Validation"
+    - _target_: monai.handlers.TensorBoardStatsHandler
+      _requires_: [summary_writer, global_epoch_transform]
+      iteration_log: false
+      epoch_log: true
+      tag_name: "Validation_rank_0"
+      rank: 0  # only rank 0 will log
     - _target_: monai.handlers.TensorBoardImageHandler
       _requires_: summary_writer
       epoch_level: true
@@ -92,6 +99,7 @@ handlers:
               a_max: ${math:"${num_classes} - 1"}
               b_min: 0.0
               b_max: 1.0
+      
   checkpoint_loader:
     _target_: monai.handlers.CheckpointLoader
     _convert_: all

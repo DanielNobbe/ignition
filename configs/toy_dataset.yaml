@@ -9,11 +9,13 @@ eval_batch_size: 8 # evaluation batch size
 num_workers: 10 # number of subprocesses to use for data loading
 max_epochs: 800 # number of maximum epochs
 use_amp: false # use AMP (Automatic Mixed Precision)
+distributed: true
+compile: false # use torch.compile to optimize the model
 
 log_every_iters: 1
 eval_every_epochs: 1
 num_classes: 3 # this dataset has 3 classes (background, liver, tumor)
-backend: gloo  # or nccl
+backend: nccl  # or nccl
 engine_type: monai # either monai or ignite
 roi_size: [64,64,8] # native roi size for model
 
@@ -28,10 +30,12 @@ model:
   blocks_down: [1, 2, 2, 4] # default
   blocks_up: [1, 1, 1]  # somehow they do another upscaling after this
 dataset:
+  # type: null
   type: MonaiSegmentationFolder # dataset type
   images_dir: tests/test-data/liverv3_small/images # images path
   labels_dir: tests/test-data/liverv3_small/labels # labels path
   subset_size: null
+  cache_mode: 'none'
   val_size: 0.2
   cache_num: 20 # number of samples to cache in memory
   transforms:  # only for monai datasets?
@@ -74,17 +78,21 @@ handlers:
     - _target_: monai.handlers.CheckpointSaver
       _convert_: partial
       _requires_: [save_dict, save_dir]
-      save_final: true
+      save_final: false
       final_filename: "final_model.pth"
       save_key_metric: false
       epoch_level: true
       save_interval: 5
-      n_saved: 5
+      n_saved: 1
+    - _target_:  monai.handlers.LrScheduleHandler
+      _requires_: lr_scheduler
+      print_lr: true
+      epoch_level: true # step the scheduler at the end of the epoch if true, else every iteration
     - _target_: monai.handlers.ValidationHandler
       _requires_: validator
       interval: ${eval_every_epochs} # validate every epoch
       epoch_level: true # validate at the end of each epoch
-      exec_at_start: true
+      exec_at_start: false
     - _target_: monai.handlers.StatsHandler
       iteration_log: ${log_every_iters}
       epoch_log: false
@@ -94,11 +102,6 @@ handlers:
       iteration_log: ${log_every_iters}
       epoch_log: true
       tag_name: "Train Loss"
-    - _target_: ignite.handlers.ProgressBar
-      desc: "Training"
-    - _target_:  monai.handlers.LrScheduleHandler
-      _requires_: lr_scheduler
-      print_lr: true
-      epoch_level: false
     # NOTE: ignite also offers a terminate on nan handler, could be interesting
       
+# inferer: null
