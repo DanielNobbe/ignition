@@ -305,3 +305,18 @@ class MonaiDatasetUtilsMixin:
         ):
             return False
         return True
+    
+    @staticmethod
+    def _filter_data_by_keys(data_list: list[dict], included_keys: list[str] | None = None) -> list[dict]:
+        """Filter data list to only include items with specified keys in include_metadata_keys."""
+        if included_keys is None:
+            return data_list
+        
+        included_keys = set(included_keys)
+        
+        filtered_data_list = []
+        for item in data_list:
+            filtered_item = {key: item[key] for key in item if key in included_keys}
+            filtered_data_list.append(filtered_item)
+        
+        return filtered_data_list

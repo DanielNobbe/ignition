@@ -97,18 +97,6 @@ class RiDatasetFromFile(PairedDataset, MonaiTransformsMixin, MonaiDatasetUtilsMi
         item[self.data_image_key] = os.path.join(self.data_root, item[self.data_image_key])
         item[self.data_label_key] = os.path.join(self.data_root, item[self.data_label_key])
         return item
-    
-    def _filter_data_by_keys(self, data_list: list[dict]) -> list[dict]:
-        """Filter data list to only include items with specified keys in include_metadata_keys."""
-        if not self.include_metadata_keys:
-            return data_list
-        
-        filtered_data_list = []
-        for item in data_list:
-            filtered_item = {key: item[key] for key in item if key in [self.data_image_key, self.data_label_key] + self.include_metadata_keys}
-            filtered_data_list.append(filtered_item)
-        
-        return filtered_data_list
 
     def _setup_datasets(self):
         self.data_image_key = self.config.dataset.get("image_key", "image")
@@ -154,8 +142,8 @@ class RiDatasetFromFile(PairedDataset, MonaiTransformsMixin, MonaiDatasetUtilsMi
         self.val_data = [self._make_abs_paths(self.data_dict[key]) for key in val_keys]
 
         # filter out some metadata since some keys can be incompatible with collating
-        self.train_data = self._filter_data_by_keys(self.train_data)
-        self.val_data = self._filter_data_by_keys(self.val_data)
+        self.train_data = self._filter_data_by_keys(self.train_data, self.include_metadata_keys + [self.patient_id_key, self.label_key, self.image_key])
+        self.val_data = self._filter_data_by_keys(self.val_data, self.include_metadata_keys + [self.patient_id_key, self.label_key, self.image_key])
 
         self.first_label_map = self.train_data[0].get("label_map", None)
         if self.first_label_map is None:
@@ -296,10 +284,91 @@ class RiDatasetFromFile(PairedDataset, MonaiTransformsMixin, MonaiDatasetUtilsMi
         return self.val_dataset
 
         
-# class RiSingleDatasetFromFile(
-#         IgnitionDataset,
-#         MonaiTransformsMixin,
-#         MonaiDatasetUtilsMixin
-#     ):
-#     """
+class RiSingleDatasetFromFile(
+        IgnitionDataset,
+        MonaiTransformsMixin,
+        MonaiDatasetUtilsMixin
+    ):
+    """A single dataset class for loading from a JSON file. For e.g. test dataset."""
+
+    image_key: str = "image"
+    label_key: str = "label"
+
+    def _load_dataset_file(self):
+        with open(self.config.dataset.dataset_file, 'r') as f:
+            data = json.load(f)
+        return data
     
+    def _make_abs_paths(self, item: dict) -> dict:
+        """Convert relative paths to absolute paths based on self.data_root."""
+        item[self.data_image_key] = os.path.join(self.data_root, item[self.data_image_key])
+        item[self.data_label_key] = os.path.join(self.data_root, item[self.data_label_key])
+        return item
+    
+    def _get_transforms(self):
+        transforms = []
+
+        if self.config.dataset.get("check_label_map", True):
+            transforms.append(
+                RiCheckLabelMap(
+                    expected_label_map=self.first_label_map,
+                    label_map_key="label_map"
+                )
+            )
+
+        # transforms.append(
+        #     MapKeysTransform(
+        #         key_mapping={
+        #             self.image_key: self.data_image_key,
+        #             self.label_key: self.data_label_key
+        #         },
+        #         remove_old_keys=True
+        #     )
+        # )
+
+        transforms.append(LoadImaged(keys=[self.image_key, self.label_key]))
+        transforms.append(EnsureTyped(keys=[self.image_key, self.label_key]))
+
+        for transform in self.config.dataset.transforms:
+            transforms.append(self._get_transform(transform))
+
+        return Compose(transforms)
+    
+    def _setup_dataset(self):
+        self.data_image_key = self.config.dataset.get("image_key", "image")
+        self.data_label_key = self.config.dataset.get("label_key", "label")
+
+        self.data_dict = self._load_dataset_file()
+        self.include_metadata_keys = self.config.dataset.get("include_metadata_keys", [])
+
+        self.data_root = self.config.dataset.get("data_root", None)
+        if self.data_root is None:
+            self.data_root = os.path.dirname(self.config.dataset.dataset_file)
+            warn(f"data_root not specified in config, defaulting to dataset file directory: {self.data_root}")
+
+        if isinstance(self.data_dict, list):
+            self.data = [self._make_abs_paths(item) for item in self.data_dict]
+        elif isinstance(self.data_dict, dict):
+            self.data = [self._make_abs_paths(item) for item in self.data_dict.values()]
+        # cannot be anything else in JSON?
+
+        self.data = self._filter_data_by_keys(self.data)
+        self.first_label_map = self.data[0].get("label_map", None)
+        if self.first_label_map is None:
+            raise ValueError("No label_map found in the first sample.")
+
+        self.dataset = self.build_dataset(self.config.dataset, self.data, self._get_transforms())
+
+        printer.info(f"Loaded {len(self.dataset)} samples.")
+    
+    def get_dataset(self):
+        return self.dataset
+    
+    def get_dataloader(self):
+        return DataLoader(
+            self.dataset,
+            num_workers=self.config.get("num_workers", 1),
+            batch_size=self.config.eval_batch_size,
+            shuffle=False,
+            drop_last=False,
+        )
