@@ -259,6 +259,7 @@ def setup_trainer(
                 max_epochs=config.max_epochs,
                 train_data_loader=idist.auto_dataloader(
                     dataset.get_train_dataset(),
+                    num_workers=config.get("num_workers", 1),
                     collate_fn=list_data_collate,
                     batch_size=dataset.train_batch_size if isinstance(dataset, PairedDataset) else config.train_batch_size
                 ),
@@ -284,6 +285,7 @@ def setup_trainer(
                 max_epochs=config.max_epochs,
                 train_data_loader=idist.auto_dataloader(
                     dataset.get_train_dataset(),
+                    num_workers=config.get("num_workers", 1),
                     collate_fn=list_data_collate,
                     batch_size=dataset.train_batch_size if isinstance(dataset, PairedDataset) else config.train_batch_size
                 ),
@@ -341,6 +343,7 @@ def setup_evaluator(
             val_dataset = dataset.get_val_dataset() if isinstance(dataset, PairedDataset) else dataset.get_dataset()
             dataloader = idist.auto_dataloader(
                 val_dataset,
+                num_workers=config.get("num_workers", 1),
                 collate_fn=list_data_collate,
                 batch_size=dataset.eval_batch_size if isinstance(dataset, (PairedDataset, IgnitionDataset)) else config.eval_batch_size
             )
@@ -373,6 +376,7 @@ def setup_evaluator(
             
             dataloader = idist.auto_dataloader(
                 val_dataset,
+                num_workers=config.get("num_workers", 1),
                 collate_fn=list_data_collate,
                 batch_size=dataset.eval_batch_size if isinstance(dataset, (PairedDataset, IgnitionDataset)) else config.eval_batch_size
             )
