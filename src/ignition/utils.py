@@ -117,13 +117,11 @@ def resume_from(
         checkpoint = torch.load(checkpoint_fp, map_location="cpu")
 
     if strip_compiled:
-        if "model" in to_load:
-            checkpoint["model"] = state_dict_strip_compiled(checkpoint["model"])
-            logger.info("Stripped '_orig_mod.' prefix from model state dict keys (from torch.compile).")
+        checkpoint = state_dict_strip_compiled(checkpoint)
+        logger.info("Stripped '_orig_mod.' prefix from model state dict keys (from torch.compile).")
     if strip_ddp:
-        if "model" in to_load:
-            checkpoint["model"] = state_dict_strip_ddp(checkpoint["model"])
-            logger.info("Stripped 'module.' prefix from model state dict keys (from DDP).")
+        checkpoint = state_dict_strip_ddp(checkpoint)
+        logger.info("Stripped 'module.' prefix from model state dict keys (from DDP).")
 
     Checkpoint.load_objects(to_load=to_load, checkpoint=checkpoint, strict=strict)
     logger.info("Successfully resumed from a checkpoint: %s", checkpoint_fp)
