@@ -61,7 +61,6 @@ def setup_handlers(
         writer = setup_tensorboard_writer(config, trainer, optimizer, validator)
     else:
         writer = None  # only log from rank 0
-    setup_wandb_logger(config, trainer, validator, optimizer)
 
     setup_train_handlers(
         config,
@@ -80,6 +79,10 @@ def setup_handlers(
         writer,
         validator,
     )
+
+    # define after the loss is set as an ignite metric
+    # so that we can log it
+    setup_wandb_logger(config, trainer, validator, optimizer)
 
     # TODO: Customise tensorboard loggers more, to include e.g. epoch number. Should be fairly easy to unpack what common.setup_tb_logging does
 
@@ -139,7 +142,8 @@ def setup_wandb_logger(config: DictConfig | ListConfig, trainer: Engine, validat
         id=config.output_dir.split("/", 1)[-1],
         config=dict(config),
         notes=config.get("notes", ""),
-        job_type="training"
+        job_type="training",
+        sync_tensorboard=False,  # this breaks correct step logging... Find another way to log pictures
     )
 
     printer.info("Weights and Biases logger initialized.")
