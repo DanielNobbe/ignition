@@ -210,7 +210,7 @@ def main(cfg: DictConfig):
     config = setup_config(cfg)
 
     # Check if we're launched by torchrun (check for environment variables)
-    world_size = int(os.environ.get('WORLD_SIZE'))
+    world_size = int(os.environ.get('WORLD_SIZE', -1))
 
     if world_size > 1:
         if int(os.environ.get('LOCAL_RANK')) == 0:
