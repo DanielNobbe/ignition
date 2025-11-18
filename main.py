@@ -167,7 +167,7 @@ def evaluate(config: DictConfig):
         loss_fn = None
         logger.warning("No loss function found in either the evaluation or model config. Some metrics may not work.")
     
-    evaluator = setup_evaluator(config, model, setup_metrics(config, loss_fn=loss_fn, model=model), device, dataset, output_dir=output_dir / "output")  # name is for post transforms
+    evaluator = setup_evaluator(config, model, setup_metrics(config, loss_fn=loss_fn, model=model), device, dataset, output_dir=os.path.join(output_dir, "output"))  # name is for post transforms
 
     evaluator.logger = logger
 
