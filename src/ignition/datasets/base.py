@@ -37,7 +37,7 @@ class IgnitionDataset(ABC):
         # is only one dataset
         self.config = config
         # this gives an error if the name is not found, which is fine
-        self.dataset = self._setup_dataset()
+        self._setup_dataset()
         # self.dataloader = self._setup_dataloader()
 
     @abstractmethod
@@ -48,8 +48,14 @@ class IgnitionDataset(ABC):
     # def _setup_dataloader(self):
     #     raise NotImplementedError("This method should be implemented in a subclass")
 
+    @abstractmethod
     def get_dataloader(self):
-        return self.dataloader
+        raise NotImplementedError("This method should be implemented in a subclass")
+    
+    @abstractmethod
+    def get_dataset(self):
+        """Returns the dataset."""
+        raise NotImplementedError("This method should be implemented in a subclass")
 
     def __len__(self):
         return len(self.dataset)
@@ -93,6 +99,16 @@ class PairedDataset(ABC):
 
     @abstractmethod
     def get_val_dataloader(self):
+        raise NotImplementedError("This method should be implemented in a subclass")
+    
+    @abstractmethod
+    def get_train_dataset(self):
+        """Returns the training dataset."""
+        raise NotImplementedError("This method should be implemented in a subclass")
+    
+    @abstractmethod
+    def get_val_dataset(self):
+        """Returns the validation dataset."""
         raise NotImplementedError("This method should be implemented in a subclass")
 
     @abstractmethod
