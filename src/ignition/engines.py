@@ -261,7 +261,7 @@ def setup_trainer(
                     dataset.get_train_dataset(),
                     num_workers=config.get("num_workers", 1),
                     collate_fn=list_data_collate,
-                    batch_size=dataset.train_batch_size if isinstance(dataset, PairedDataset) else config.train_batch_size
+                    batch_size=config.batch_size
                 ),
                 amp=config.get("use_amp", False),
                 network=model,
