@@ -1,11 +1,16 @@
+import os
+from collections.abc import Iterable
+
 import numpy as np
 import torch
 
 from monai.config import DtypeLike, KeysCollection
 from monai.transforms import MapLabelValue
-from monai.transforms.transform import Transform, MapTransform
+from monai.transforms.transform import Transform, MapTransform, RandomizableTrait
 
 from monai.utils import look_up_option
+
+
 
 class VistaLabelMapd(MapTransform):
     def __init__(
@@ -104,15 +109,271 @@ class MapKeysTransform(Transform):
 
     def __call__(self, data):
         d = dict(data)
-        if self.remove_old_keys:
-            new_data = {}
-        else:
-            new_data = d.copy()
+        new_data = d.copy()
         for old_key, new_key in self.key_mapping.items():
             if old_key in d:
                 new_data[new_key] = d[old_key]
-                if not self.remove_old_keys and new_key != old_key:
+                if self.remove_old_keys and new_key != old_key:
                     # still need to remove the previous key so there's no remaining old key
                     del new_data[old_key]
         return new_data
         
+class MultipleItemRandomSelect(Transform, RandomizableTrait):
+    """Used for datasets with multiple files per image. Randomly selects one of them.
+    
+    Should be used in conjunction with MultipleItemRandomSelectd.
+    """
+
+    def __init__(
+        self,
+        mode: str = "uniform"
+    ):
+        """
+        Args:
+            mode: selection mode. Options are "uniform" (default) or "weighted".
+        """
+        assert mode == "uniform", f"Unsupported mode: {mode}"
+        self.mode = mode
+
+    def __call__(self, data):
+        if not isinstance(data, list):
+            raise ValueError("Input data must be a list.")
+        if self.mode == "uniform":
+            idx = np.random.randint(len(data))
+        else:
+            raise NotImplementedError(f"Mode {self.mode} not implemented.")
+        return data[idx]
+
+
+class MultipleItemRandomSelectd(MapTransform, RandomizableTrait):
+    """Used for datasets with multiple files per image. Randomly selects one of them.
+
+    Should be used in conjunction with MultipleItemRandomSelectd, and before LoadImaged.
+    """
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        mode: str = "uniform",
+        allow_missing_keys: bool = False,
+    ):
+        """
+        Args:
+            keys: keys of the corresponding items to be transformed.
+            mode: selection mode. Options are "uniform" (default) or "weighted".
+        """
+        super().__init__(keys, allow_missing_keys)
+        assert mode == "uniform", f"Unsupported mode: {mode}"
+        self.mode = mode
+        self.transform = MultipleItemRandomSelect(mode=mode)
+
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = self.transform(d[key])
+        return d
+
+
+class MultipleItemSelectFirst(Transform):
+    """Used for datasets with multiple files per image. Selects the first one, or a specified index.
+    
+    If input is not a list, returns the input as is.
+    """
+
+    def __init__(
+        self,
+        index: int = 0,
+        optional: bool = True,
+
+    ):
+        """
+        Args:
+            mode: selection mode. Options are "uniform" (default) or "weighted".
+        """
+        self.index = index
+        self.optional = optional
+
+    def __call__(self, data):
+        if self.optional and not isinstance(data, list):  # Iterable fails because str is Iterable
+            return data
+        # breakpoint()
+        return data[self.index]
+
+
+class MultipleItemSelectFirstd(MapTransform):
+    """Used for datasets with multiple files per image. Selects the first one.
+
+    Should be used in conjunction with MultipleItemRandomSelectd, and before LoadImaged.
+    """
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        index: int = 0,
+        optional: bool = True,
+        allow_missing_keys: bool = False,
+    ):
+        """
+        Args:
+            keys: keys of the corresponding items to be transformed.
+            mode: selection mode. Options are "uniform" (default) or "weighted".
+        """
+        super().__init__(keys, allow_missing_keys)
+        self.transform = MultipleItemSelectFirst(index=index, optional=optional)
+
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = self.transform(d[key])
+        return d
+
+
+class GetKey(Transform):
+    """Get a specific key from a dictionary."""
+
+    def __init__(
+        self,
+        key: str,
+    ):
+        """
+        Args:
+            key: key to get from the dictionary.
+        """
+        self.key = key
+
+    def __call__(self, data):
+        if isinstance(data, dict):
+            if self.key not in data:
+                raise KeyError(f"Key '{self.key}' not found in data.")
+            return data[self.key]
+        elif isinstance(data, list) and all(isinstance(item, dict) for item in data):
+            return [item[self.key] for item in data if self.key in item]
+        else:
+            raise TypeError("Input data must be a dictionary or a list of dictionaries.")
+
+
+class GetKeyd(MapTransform):
+    """Get a specific key from a dictionary."""
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        key: str,
+        allow_missing_keys: bool = False,
+    ):
+        """
+        Args:
+            keys: Keys in item to apply transform to
+            key: key to get from the dictionary.
+
+        example:
+        item = {
+            'label': {
+                'masks: ...
+                'annotator': 'Dr. Smith'
+            },
+            'image': ...
+        }
+        keys = 'label'
+        key = 'masks'
+
+        --> this transform will extract item['label']['masks'] to item['label']
+
+        """
+        self.transform = GetKey(key)
+        super().__init__(keys, allow_missing_keys)
+
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = self.transform(d[key])
+        return d
+
+
+class MakeAbsPathd(MapTransform):
+    """Make paths absolute by joining with a root directory."""
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        root_dir: str,
+        allow_missing_keys: bool = False,
+    ):
+        """
+        Args:
+            keys: keys of the corresponding items to be transformed.
+            root_dir: root directory to join with relative paths.
+        """
+        super().__init__(keys, allow_missing_keys)
+        self.root_dir = root_dir
+
+    def __call__(self, data):
+
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = os.path.abspath(os.path.join(self.root_dir, d[key]))
+        return d
+    
+
+class SqueezeDim(Transform):
+    """Squeeze a specific dimension from a tensor or numpy array."""
+
+    def __init__(
+        self,
+        dim: int = -1,
+    ):
+        """
+        Args:
+            dim: dimension to squeeze. Default is the last.
+        """
+        self.dim = dim
+
+    def __call__(self, data):
+        if isinstance(data, torch.Tensor | np.ndarray):
+            return data.squeeze(self.dim)
+        else:
+            raise TypeError("Input data must be a torch.Tensor or a numpy.ndarray.")
+        
+class SqueezeDimd(MapTransform):
+    """Squeeze a specific dimension from a tensor or numpy array."""
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        dim: int = -1,
+        allow_missing_keys: bool = False,
+    ):
+        """
+        Args:
+            keys: keys of the corresponding items to be transformed.
+            dim: dimension to squeeze. Default is the last.
+        """
+        super().__init__(keys, allow_missing_keys)
+        self.transform = SqueezeDim(dim=dim)
+
+    def __call__(self, data):
+        d = dict(data)
+        for key in self.key_iterator(d):
+            d[key] = self.transform(d[key])
+        return d
+    
+
+class Debugd(MapTransform):
+    """Print the shape and type of the data for debugging purposes."""
+
+    def __init__(
+        self,
+        keys: KeysCollection,
+        allow_missing_keys: bool = True,
+    ):
+        """
+        Args:
+            keys: keys of the corresponding items to be transformed.
+        """
+        super().__init__(keys, allow_missing_keys)
+
+    def __call__(self, data):
+        d = dict(data)
+        breakpoint()
+
+        return d
