@@ -192,12 +192,12 @@ class MonaiFolderUtilsMixin:
         ext = os.path.splitext(files[0])[1]
         return all(os.path.splitext(f)[1] == ext for f in files)
 
-    def _create_dict(self, image_file):
+    def _create_dict(self, image_file, labels_dir: str | None = None):
         output = {self.image_key: os.path.join(self.images_dir, image_file)}
 
-        if self.labels_dir:
+        if labels_dir is not None:
             file_name = image_file  # could also split off extension if it's different
-            output[self.label_key] = os.path.join(self.labels_dir, file_name)
+            output[self.label_key] = os.path.join(labels_dir, file_name)
 
             # ensure it exists
             if not os.path.isfile(output[self.label_key]):
@@ -207,7 +207,7 @@ class MonaiFolderUtilsMixin:
     
     def get_prepare_batch(self):
         def prepare_batch(batch, device, non_blocking):
-            x, y = batch[self.image_key], batch[self.label_key]
+            x, y = batch[self.image_key], batch.get(self.label_key)
             return x, y
 
         return prepare_batch
