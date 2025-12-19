@@ -308,7 +308,7 @@ def setup_trainer(
 def setup_evaluator(
     config: Any,
     model: IgnitionModel,
-    metrics: Dict[str, Metric],
+    metrics: Dict[str, Metric] | None,
     device: Union[str, torch.device],
     dataset: PairedDataset | IgnitionDataset,
     name: str | None = None,
@@ -333,8 +333,10 @@ def setup_evaluator(
             for name, metric in metrics.items():
                 metric.attach(evaluator, name)
         case "monai":
-
-            key_metric, other_metrics = split_dict_at_index(metrics, 1)
+            if metrics is not None:
+                key_metric, other_metrics = split_dict_at_index(metrics, 1)
+            else:
+                key_metric, other_metrics = None, None
             # relies on the fact that dicts are ordered in Python 3.7+
 
             # in a paired dataset, we get the val dataloader
