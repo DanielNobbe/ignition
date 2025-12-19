@@ -56,7 +56,7 @@ class RiDatasetMixin():
     
     def get_prepare_batch(self):
         def prepare_batch(batch, device=None, non_blocking=None):
-            x, y = batch[self.image_key], batch[self.label_key]
+            x, y = batch[self.image_key], batch.get(self.label_key)
             return x, y
 
         return prepare_batch
@@ -76,11 +76,12 @@ class RiDatasetMixin():
                 raise ValueError(f"Unsupported type for path in dataset item: {type(item)}")
             return item
         
-    def _make_abs_paths(self, item: dict, keys: list[str] | None) -> dict:
+    def _make_abs_paths(self, item: dict, keys: list[str]) -> dict:
         """Convert relative paths to absolute paths based on self.data_root."""
         # NOTE: Could make this a transform too
         for key in keys:
-            item[key] = self._make_abs_path(item[key])
+            if key in item:
+                item[key] = self._make_abs_path(item[key])
             # if isinstance(item[file_type], str | os.PathLike):
             #     item[key] = os.path.join(self.data_root, item[key])
             # elif isinstance(item[key], list):
@@ -95,7 +96,7 @@ class RiDatasetMixin():
         if isinstance(data_dict, dict | DictConfig):
             # check for train and val keys
             if "training" in data_dict.keys() and "validation" in data_dict.keys():
-                warn("dataset_file contains 'training' and 'validation' keys, using those for train and val datasets.")
+                warn("dataset_file seems to be in datalist format with 'training' and 'validation' keys.")
                 return True
         return False
     
@@ -417,7 +418,7 @@ class RiSingleDatasetFromFile(
     def _setup_dataset(self):
         self._set_data_keys_from_cfg()
 
-        if self._check_for_splits_as_datalist(self.config.dataset.dataset_file):
+        if self._check_for_splits_as_datalist(self.config.dataset.dataset_file) or self.config.dataset.get("datalist_key") is not None:
             datalist_key = self.config.dataset.get("datalist_key", "validation")
             data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
             assert datalist_key in data_dict.keys(), f"dataset_file must contain '{datalist_key}' key. If using a different key, please specify the `datalist_key` in the config."

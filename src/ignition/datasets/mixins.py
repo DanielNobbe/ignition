@@ -49,17 +49,20 @@ class MonaiTransformsMixin:
                     spatial_size=transform.spatial_size,  # should be at least the roi size
                     mode=transform.get("mode", "constant"),  # padding mode
                     constant_values=transform.get("constant_values", 0),  # padding value
+                    allow_missing_keys=True
                 )
             case "MapLabelValue":
                 return MapLabelValued(
                     keys=[self.label_key],
                     orig_labels=transform.orig_labels,
                     target_labels=transform.target_labels,
+                    allow_missing_keys=True
                 )
             case "LabelFilter":
                 return LabelFilterd(
                     keys=[self.label_key],
                     applied_labels=transform.get("applied_labels", 0),
+                    allow_missing_keys=True
                 )
             case "AsDiscrete":
                 return AsDiscreted(
@@ -67,6 +70,7 @@ class MonaiTransformsMixin:
                     argmax=transform.get("argmax", True),
                     to_onehot=transform.get("to_onehot", None),
                     include_background=transform.get("include_background", True),
+                    allow_missing_keys=True
                 )
             case "RandSpatialCrop":
                 return RandSpatialCropd(
@@ -74,6 +78,7 @@ class MonaiTransformsMixin:
                     roi_size=transform.roi_size,
                     random_center=transform.get("random_center", True),
                     random_size=transform.get("random_size", False),
+                    allow_missing_keys=True
                 )
             case "ScaleIntensity":
                 return ScaleIntensityd(
@@ -85,7 +90,8 @@ class MonaiTransformsMixin:
                 )
             case "Orientation":
                 return Orientationd(
-                    keys=[self.image_key, self.label_key], axcodes=transform.axcodes
+                    keys=[self.image_key, self.label_key], axcodes=transform.axcodes,
+                    allow_missing_keys=True
                 )  # TODO: CHeck how we use this
             case "Spacing":
                 return Spacingd(
@@ -93,12 +99,14 @@ class MonaiTransformsMixin:
                     pixdim=transform.pixdim,
                     mode=transform.get("mode", "bilinear"),
                     align_corners=transform.get("align_corners", None),
+                    allow_missing_keys=True
                 )
             case "RandFlip":
                 return RandFlipd(
                     keys=[self.image_key, self.label_key],
                     prob=transform.prob,
                     spatial_axis=transform.get("spatial_axis", None),
+                    allow_missing_keys=True
                 )
             case "NormalizeIntensity":
                 return NormalizeIntensityd(
@@ -123,7 +131,7 @@ class MonaiTransformsMixin:
                     channel_wise=transform.get("channel_wise", False),
                 )
             case "EnsureChannelFirst":
-                return EnsureChannelFirstd(keys=[self.image_key, self.label_key], channel_dim=transform.channel_dim)
+                return EnsureChannelFirstd(keys=[self.image_key, self.label_key], channel_dim=transform.channel_dim, allow_missing_keys=True)
             case "RandGaussianSmooth":
                 return RandGaussianSmoothd(
                     keys=[self.image_key],
@@ -153,6 +161,7 @@ class MonaiTransformsMixin:
                     argmax=transform.get("argmax", False),
                     to_onehot=transform.get("to_onehot", None),
                     include_background=transform.get("include_background", True),
+                    allow_missing_keys=True
                 )
             case _:
                 raise ValueError(f"Unknown transform type: {transform.type}")
@@ -183,12 +192,12 @@ class MonaiFolderUtilsMixin:
         ext = os.path.splitext(files[0])[1]
         return all(os.path.splitext(f)[1] == ext for f in files)
 
-    def _create_dict(self, image_file):
+    def _create_dict(self, image_file, labels_dir: str | None = None):
         output = {self.image_key: os.path.join(self.images_dir, image_file)}
 
-        if self.labels_dir:
+        if labels_dir is not None:
             file_name = image_file  # could also split off extension if it's different
-            output[self.label_key] = os.path.join(self.labels_dir, file_name)
+            output[self.label_key] = os.path.join(labels_dir, file_name)
 
             # ensure it exists
             if not os.path.isfile(output[self.label_key]):
@@ -198,7 +207,7 @@ class MonaiFolderUtilsMixin:
     
     def get_prepare_batch(self):
         def prepare_batch(batch, device, non_blocking):
-            x, y = batch[self.image_key], batch[self.label_key]
+            x, y = batch[self.image_key], batch.get(self.label_key)
             return x, y
 
         return prepare_batch
@@ -313,6 +322,7 @@ class MonaiDatasetUtilsMixin:
             return data_list
         
         included_keys = set(included_keys)
+        print(f"Filtering data to include keys: {included_keys}")
         
         filtered_data_list = []
         for item in data_list:

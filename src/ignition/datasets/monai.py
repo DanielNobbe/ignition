@@ -203,17 +203,18 @@ class EvalSegmentationFolder(IgnitionDataset, MonaiTransformsMixin, MonaiFolderU
         if not self._verify_all_same_ext(image_files):
             raise ValueError(f"Not all image files in directory {self.config.dataset.images_dir} have the same extension.")
 
-        self.labels_dir = self.config.dataset.labels_dir
-        label_files = self._filter_image_files(os.listdir(self.config.dataset.labels_dir))
+        self.labels_dir = self.config.dataset.get('labels_dir')
+        if self.labels_dir is not None:
+            label_files = self._filter_image_files(os.listdir(self.config.dataset.labels_dir))
+            assert len(label_files) > 0, f"No label files found in directory {self.config.dataset.labels_dir}."
+            if not self._verify_all_same_ext(label_files):
+                raise ValueError(f"Not all label files in directory {self.config.labels_dir} have the same extension.")
 
         assert len(image_files) > 0, f"No image files found in directory {self.config.dataset.images_dir}."
-        assert len(label_files) > 0, f"No label files found in directory {self.config.dataset.labels_dir}."
 
 
-        if not self._verify_all_same_ext(label_files):
-            raise ValueError(f"Not all label files in directory {self.config.labels_dir} have the same extension.")
 
-        data_list = [self._create_dict(image_file) for image_file in image_files]
+        data_list = [self._create_dict(image_file, self.labels_dir) for image_file in image_files]
 
         if self.config.dataset.get("subset_size") is not None and (self.config.dataset.subset_size < 1.0):
             warn("Using subset_size, which does not use torch.Subset, but takes a naive slice.")
@@ -249,8 +250,8 @@ class EvalSegmentationFolder(IgnitionDataset, MonaiTransformsMixin, MonaiFolderU
     def _get_transforms(self):
         transforms = []
 
-        transforms.append(LoadImaged(keys=[self.image_key, self.label_key]))
-        transforms.append(EnsureTyped(keys=[self.image_key, self.label_key]))
+        transforms.append(LoadImaged(keys=[self.image_key, self.label_key], allow_missing_keys=True))
+        transforms.append(EnsureTyped(keys=[self.image_key, self.label_key], allow_missing_keys=True))
 
         for transform in self.config.dataset.get("transforms", []):
             transforms.append(self._get_transform(transform))

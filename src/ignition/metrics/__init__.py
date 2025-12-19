@@ -45,6 +45,10 @@ def setup_metrics(
 ) -> Dict[str, Metric] | None:
     """Setup metrics based on the configuration."""
 
+    if config.get("metrics") is None:
+        warn("No metrics configuration found.")
+        return None
+
     instantiate_kwargs = {
         "loss_fn": loss_fn,
         "model": model,
