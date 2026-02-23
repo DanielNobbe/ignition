@@ -12,6 +12,7 @@ from ignite.engine import Events
 from ignite.handlers import LRScheduler, ProgressBar
 from ignite.utils import manual_seed
 from omegaconf import DictConfig
+from omegaconf import OmegaConf
 
 from ignition.data.utils import denormalize
 from ignition.datasets import setup_dataset
@@ -134,6 +135,11 @@ def evaluate(config: DictConfig):
         raise ValueError("For evaluation, the 'model_dir' field must be specified in the config, pointing to the training output directory.")
     
     model_config = get_model_config(model_dir)
+
+    logger = setup_logging(config)  # only logs on rank 0
+
+    # override settings (roi_size, spacing, num_classes) from model_config
+    override_config_with_model_config(config, model_config, logger)
     
     monai.config.print_config()
     # make a certain seed
