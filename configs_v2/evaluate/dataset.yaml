@@ -1,0 +1,4 @@
+cache_mode: memory # cache mode, can be 'memory' of 'lmdb'
+cache_num: 20
+cache_dir: ${oc.env:TMPDIR, /storage/homefs/dn25y590}/daniel_persistent_cache # directory to store lm
+check_label_map: false
