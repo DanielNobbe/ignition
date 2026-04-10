@@ -34,5 +34,5 @@ torchrun \
     --master_addr 127.0.0.1 \
     --master_port "$MASTER_PORT" \
     main.py \
-    --config-dir=configs_v2 \
+    --config-dir=configs \
     --config-name=train-toy-dataset.yaml
