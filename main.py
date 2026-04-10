@@ -12,6 +12,7 @@ from ignite.engine import Events
 from ignite.handlers import LRScheduler, ProgressBar
 from ignite.utils import manual_seed
 from omegaconf import DictConfig
+from omegaconf import OmegaConf
 
 from ignition.data.utils import denormalize
 from ignition.datasets import setup_dataset
@@ -64,25 +65,48 @@ def train(config: DictConfig):
 
     logger.info("Configuration: \n%s", pformat(config))
 
-    # load datasets and create dataloaders
-    dataset = setup_dataset(config)
-    dataloader_train = dataset.get_train_dataloader()
-    dataloader_val = dataset.get_val_dataloader()
-    le = len(dataloader_train)
 
     device = idist.device()
 
+    if config.mode == "train":
+        model = idist.auto_model(
+            setup_model(config)
+        )
+    elif config.mode == "finetune":
+        if config.finetune.get("model_type") != "ignition":
+            raise ValueError(f"Finetuning for model type {config.finetune.model_type} is not supported. Only 'ignition' is currently implemented.")
+        model_dir = config.finetune.get("model_dir", None)
+        if model_dir is None:
+            raise ValueError("For finetuning, the 'model_dir' field must be specified in the config, pointing to the training output directory of the model to finetune.")
+        model_config = get_model_config(model_dir)
+        override_config_with_model_config(config, model_config, logger)
+        model = idist.auto_model(setup_model(model_config))
+        model = load_checkpoint_for_evaluation(config, model_dir, model, logger, strip_compiled=True, strip_ddp=True)  # we need to strip the compiled and ddp prefixes in case we're loading a checkpoint that was trained with those. Model needs to be fully loaded before we apply PEFT.
 
-    model = idist.auto_model(
-        setup_model(config)
-    )
-    
+        if config.finetune.get("peft", False):
+            from src.ignition.models.peft import try_out_peft
+            model = try_out_peft(model)
+        else:
+            logger.warning("Finetuning without PEFT. This will finetune all parameters, which may not be desired.")
+
     if config.get("compile", False):
         model = torch.compile(model)
         logger.info("Model compiled with torch.compile.")
 
     if config.get("pretrained") is not None:
         load_pretrained_weights(config, model, logger)
+
+    # load datasets and create dataloaders
+    dataset = setup_dataset(config)
+    le = len(dataset.get_train_dataset())
+    
+    if config.get('debug', False) and rank == 0:
+        dataloader_train = dataset.get_train_dataloader()
+        dataloader_val = dataset.get_val_dataloader()
+        first_batch = next(iter(dataloader_train))
+        logger.info(f"First training batch keys: {list(first_batch.keys())}")
+        first_val_batch = next(iter(dataloader_val))
+        logger.info(f"First validation batch keys: {list(first_val_batch.keys())}")
 
     optimizer = idist.auto_optim(setup_optimizer(model.parameters(), config))
     loss_fn = setup_loss(config).to(device=device)
@@ -134,6 +158,14 @@ def evaluate(config: DictConfig):
         raise ValueError("For evaluation, the 'model_dir' field must be specified in the config, pointing to the training output directory.")
     
     model_config = get_model_config(model_dir)
+
+    if model_config.mode == "finetune" and model_config.finetune.get("peft", False):
+        raise ValueError("Evaluation of finetuned models with PEFT is not currently supported. Please implement loading the PEFT adapter.")
+
+    logger = setup_logging(config)  # only logs on rank 0
+
+    # override settings (roi_size, spacing, num_classes) from model_config
+    override_config_with_model_config(config, model_config, logger)
     
     monai.config.print_config()
     # make a certain seed
@@ -187,18 +219,18 @@ def evaluate(config: DictConfig):
 
 def run(config: Any):
     """Run training or evaluation based on config mode."""
-    if config.mode == "train":
+    if config.mode in ["train", "finetune"]:
         train(config)
     elif config.mode == "eval":
         evaluate(config)
     else:
-        raise ValueError(f"Unknown mode: {config.mode}. Supported modes are 'train'.")
+        raise ValueError(f"Unknown mode: {config.mode}. Supported modes are 'train', 'finetune' and 'eval'.")
 
 
 # main entrypoint
 @hydra.main(
     version_base=None,
-    config_path="configs",
+    config_path="configs_v2",
     config_name="config.yaml",
 )
 def main(cfg: DictConfig):
@@ -209,11 +241,15 @@ def main(cfg: DictConfig):
 
     config = setup_config(cfg)
 
-    # Check if we're launched by torchrun (check for environment variables)
-    world_size = int(os.environ.get('WORLD_SIZE', -1))
+    # Initialize distributed only for real torchrun launches.
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    has_torchrun_env = all(
+        key in os.environ
+        for key in ("RANK", "LOCAL_RANK", "WORLD_SIZE")
+    )
 
-    if world_size > 1:
-        if int(os.environ.get('LOCAL_RANK')) == 0:
+    if has_torchrun_env and world_size > 1:
+        if int(os.environ.get("LOCAL_RANK", "0")) == 0:
             print(f"Running on {world_size} processes.")
         idist.initialize(config.backend)  # NOTE: We can't use idist.Parallel, it conflicts with Hydra
 
@@ -222,6 +258,8 @@ def main(cfg: DictConfig):
 
         idist.finalize()
     else:
+        if world_size > 1 and not has_torchrun_env:
+            print("Ignoring partial distributed environment and running single process.")
         print("Running on single process.")
         run(config)
 

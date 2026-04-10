@@ -13,6 +13,7 @@ from .base import PairedDataset, IgnitionDataset
 from .mixins import MonaiFolderUtilsMixin, MonaiTransformsMixin, MonaiDatasetUtilsMixin
 
 from logging import getLogger
+import numpy as np
 
 printer = getLogger(__name__)
 
@@ -24,17 +25,29 @@ class SegmentationFolder(MonaiFolderUtilsMixin, PairedDataset, MonaiTransformsMi
     This class incorporates splitting the dataset into training and validation sets.
     """
 
+    def _randomise_order(self, data_list):
+        # randomise order of data list, but ensure that all ranks have the same order
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("Randomising order of data list is not implemented for distributed training. Please ensure that your data is already shuffled, or implement a method to shuffle it consistently across ranks. Also ensure that each rank uses the same permutation/seed.")
+            
+        data_list = self.rng.permutation(data_list).tolist()            
+        return data_list
+
     def _setup_datasets(self):
         # create a list of all files and label files in these directories
         # TODO: Implement another class that does not need to keep
         # items in memory
         # TODO: Implement based on CacheDataset
+        self.rng = np.random.default_rng(self.config.get("random_seed", 42))
+
 
         self.images_dir = self.config.dataset.images_dir
 
         image_files = self._filter_image_files(os.listdir(self.config.dataset.images_dir))
 
         image_files.sort()  # ensure consistent order for validation split
+        if self.config.dataset.get("split_type") == "random":
+            image_files = self._randomise_order(image_files)
 
         printer.info(f"All image files: {image_files}")
 
@@ -52,7 +65,6 @@ class SegmentationFolder(MonaiFolderUtilsMixin, PairedDataset, MonaiTransformsMi
             raise ValueError(f"Not all label files in directory {self.config.labels_dir} have the same extension.")
 
         data_list = [self._create_dict(image_file) for image_file in image_files]
-
         # super().__init__(data=data_list)  # TODO: Move logic to parent class
 
         # TODO: Handle subsetting to decrease size
@@ -117,29 +129,33 @@ class SegmentationFolder(MonaiFolderUtilsMixin, PairedDataset, MonaiTransformsMi
         if self.config.get("inferer") is not None:
             # if using custom inferer, we use batch size of 1,
             # since it may do custom batching
+            self.config.eval_batch_size = 1  # feed back into global config, to use idist.auto_dataloader which looks at config for batch size
             self.eval_batch_size = 1
             warn(
                 f"Using custom inferer {self.config.inferer.get('_target_', 'unknown')}, setting eval batch size to 1. Inferer may handle batching. "
             )
         else:
             # otherwise, we use the eval batch size from the config
-            self.eval_batch_size = self.config.eval_batch_size
+            self.config.eval_batch_size = self.config.eval_batch_size
 
         if self.config.get("train_inferer", False):
             warn(
                 f"Using custom inferer {self.config.train_inferer.get('_target_', 'unknown')}, setting eval batch size to 1. Inferer may handle batching. "
             )
+            self.config.train_batch_size = 1
             self.train_batch_size = 1
         else:
+            self.config.train_batch_size = self.config.batch_size
             self.train_batch_size = self.config.batch_size
 
 
     def _get_train_transforms(self):
         transforms = []
 
-        transforms.append(LoadImaged(keys=[self.image_key, self.label_key]))
-        transforms.append(EnsureTyped(keys=[self.image_key, self.label_key]))
-
+        if self.config.dataset.get("auto_add_loadimage", True):
+            transforms.append(LoadImaged(keys=[self.image_key, self.label_key]))
+            transforms.append(EnsureTyped(keys=[self.image_key, self.label_key]))
+    
         # TODO: In BraTS, they use channels per label class, do we need this too?
 
         for transform in self.config.dataset.transforms.get("train", []):
@@ -150,8 +166,9 @@ class SegmentationFolder(MonaiFolderUtilsMixin, PairedDataset, MonaiTransformsMi
     def _get_val_transforms(self):
         transforms = []
 
-        transforms.append(LoadImaged(keys=[self.image_key, self.label_key]))
-        transforms.append(EnsureTyped(keys=[self.image_key, self.label_key]))
+        if self.config.dataset.get("auto_add_loadimage", True):
+            transforms.append(LoadImaged(keys=[self.image_key, self.label_key]))
+            transforms.append(EnsureTyped(keys=[self.image_key, self.label_key]))
 
         for transform in self.config.dataset.transforms.get("val", []):
             transforms.append(self._get_transform(transform))

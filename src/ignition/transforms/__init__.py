@@ -5,6 +5,7 @@ import numpy as np
 import torch
 
 from monai.config import DtypeLike, KeysCollection
+from monai.data import MetaTensor
 from monai.transforms import MapLabelValue
 from monai.transforms.transform import Transform, MapTransform, RandomizableTrait
 
@@ -376,4 +377,58 @@ class Debugd(MapTransform):
         d = dict(data)
         breakpoint()
 
+        return d
+    
+
+class ORTransform(Transform):
+    """Apply logical OR operation along a dimension of a binary tensor."""
+    def __init__(
+        self,
+        dim: int = 0,
+        keep_dim: bool = True
+    ):
+        """
+        Args:
+            dim: dimension to apply the OR operation. Default is 0.
+            keep_dim: whether to keep the dimension after the OR operation. Default is True.
+        """
+        self.dim = dim
+        self.keep_dim = keep_dim
+
+    def __call__(self, data):
+        if isinstance(data, MetaTensor):
+            tdata = data.as_tensor()
+            ret = tdata.any(dim=self.dim, keepdim=self.keep_dim).to(tdata.dtype)
+            return MetaTensor(ret, meta=data.meta)
+        if isinstance(data, torch.Tensor):
+            return data.any(dim=self.dim, keepdim=self.keep_dim).to(data.dtype)
+        elif isinstance(data, np.ndarray):
+            return np.any(data, axis=self.dim, keepdims=self.keep_dim).astype(data.dtype)
+        else:
+            raise TypeError("Input data must be a torch.Tensor or a numpy.ndarray.")
+        
+
+class ORTransformd(MapTransform):
+    """Apply logical OR operation along a dimension of a binary tensor."""
+    def __init__(
+        self,
+        keys: KeysCollection,
+        out_keys: KeysCollection | None = None,
+        dim: int = 0,
+        allow_missing_keys: bool = False,
+    ):
+        """
+        Args:
+            keys: keys of the corresponding items to be transformed.
+            out_keys: keys where the transformed items will be stored. If None, the original keys are used.
+            dim: dimension to apply the OR operation. Default is 0.
+        """
+        super().__init__(keys, allow_missing_keys)
+        self.transform = ORTransform(dim=dim)
+        self.out_keys = out_keys if out_keys is not None else keys
+
+    def __call__(self, data):
+        d = dict(data)
+        for key, out_key in zip(self.key_iterator(d), self.out_keys):
+            d[out_key] = self.transform(d[key])
         return d

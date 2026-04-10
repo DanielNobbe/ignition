@@ -91,12 +91,12 @@ class RiDatasetMixin():
         return item
     
     @staticmethod
-    def _check_for_splits_as_datalist(data_file: str) -> bool:
+    def _check_for_splits_as_datalist(data_file: str, keys: list[str] = ["training", "validation"]) -> bool:
         data_dict = __class__._load_dataset_file(data_file)
         if isinstance(data_dict, dict | DictConfig):
             # check for train and val keys
-            if "training" in data_dict.keys() and "validation" in data_dict.keys():
-                warn("dataset_file seems to be in datalist format with 'training' and 'validation' keys.")
+            if all(key in data_dict.keys() for key in keys):
+                warn(f"dataset_file seems to be in datalist format with keys {keys}.")
                 return True
         return False
     
@@ -157,65 +157,97 @@ class RiDatasetFromFile(RiDatasetMixin, PairedDataset, MonaiTransformsMixin, Mon
         return train_keys, val_keys
 
     def _setup_datasets(self):
+        """ 
+        we use the config key "split type" to determine if the dataset
+        needs to be split or already has splits.
+
+        We support the following split types:
+        1. random: We randomly split the dataset into train and val sets based on `val_size`.
+        2. files: We specify separate files for train and val sets in the config, through a dict in the `dataset_file` key. A n entry with the key "test" can be specified for a test run after training.
+        3. datalist: We use a single JSON file with 'training' and 'validation' keys, which contain the respective splits. This is similar to the datalist format used in some MONAI examples. `test_key` can be specified for a test run after training.
+        4. cross_val: We use a datalist-style JSON file with keys
+            "training" and "test". The items in the "training" key
+            should each have a "fold" key, which specifies the fold
+            they belong to. Based on the `cross_val_fold` key in the config, we use one fold for validation and the rest for training. `test_key` can be specified for a test run after training.
+        
+        We don't allow a default, to ensure backwards compatibility.
+        """
         self._set_data_keys_from_cfg()
         # print(f"Using image key: {self.data_image_key}, label key: {self.data_label_key}, patient id key: {self.patient_id_key}, label map key: {self.label_map_key}")
+        
+        match self.config.dataset.split_type:
+            case "files":
+                if not isinstance(self.config.dataset.dataset_file, dict | DictConfig):
+                    raise TypeError("If split_type is 'files', dataset_file must be a dict or DictConfig.")
+                # we allow specifying two JSON files, one for train and one for val
+                assert 'train' in self.config.dataset.dataset_file.keys() and 'val' in self.config.dataset.dataset_file.keys(), "If dataset_file is a dict, it must contain 'train' and 'val' keys."
+                train_file = self.config.dataset.dataset_file.train
+                val_file = self.config.dataset.dataset_file.val
 
-        if isinstance(self.config.dataset.dataset_file, dict | DictConfig):
-            # we allow specifying two JSON files, one for train and one for val
-            assert 'train' in self.config.dataset.dataset_file.keys() and 'val' in self.config.dataset.dataset_file.keys(), "If dataset_file is a dict, it must contain 'train' and 'val' keys."
-            train_file = self.config.dataset.dataset_file.train
-            val_file = self.config.dataset.dataset_file.val
+                self.train_data = self._load_dataset_file(train_file)
+                self.val_data = self._load_dataset_file(val_file)
 
-            self.train_data = self._load_dataset_file(train_file)
-            self.val_data = self._load_dataset_file(val_file)
+                if isinstance(self.train_data, dict):
+                    self.train_data = list(self.train_data.values())
+                if isinstance(self.val_data, dict):
+                    self.val_data = list(self.val_data.values())
 
-            if isinstance(self.train_data, dict):
-                self.train_data = list(self.train_data.values())
-            if isinstance(self.val_data, dict):
-                self.val_data = list(self.val_data.values())
+                self._print_split_warning()
+            case "datalist":
+                if not self._check_for_splits_as_datalist(self.config.dataset.dataset_file):
+                    raise ValueError("datalist split type requires a datalist-style JSON file with 'training' and 'validation' keys.")
+                data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
+                assert "training" in data_dict.keys() and "validation" in data_dict.keys(), "dataset_file must contain 'training' and 'validation' keys."
+                self.train_data = data_dict["training"]
+                self.val_data = data_dict["validation"]
+                if isinstance(self.train_data, dict):
+                    self.train_data = list(self.train_data.values())
+                if isinstance(self.val_data, dict):
+                    self.val_data = list(self.val_data.values())
+                
+                self._print_split_warning()
+            case "random":
+                self.data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
 
-            self._print_split_warning()
-        elif self._check_for_splits_as_datalist(self.config.dataset.dataset_file):
-            data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
-            assert "training" in data_dict.keys() and "validation" in data_dict.keys(), "dataset_file must contain 'training' and 'validation' keys."
-            self.train_data = data_dict["training"]
-            self.val_data = data_dict["validation"]
-            if isinstance(self.train_data, dict):
-                self.train_data = list(self.train_data.values())
-            if isinstance(self.val_data, dict):
-                self.val_data = list(self.val_data.values())
-            
-            self._print_split_warning()
-        else:
-            self.data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
+                # since we have heterogeneous dataset, and need to maintain a deterministic split,
+                # we cannot sort the keys, since they include the dataset name.
+                # instead, we should uniformly sample from the keys.
 
-            # since we have heterogeneous dataset, and need to maintain a deterministic split,
-            # we cannot sort the keys, since they include the dataset name.
-            # instead, we should uniformly sample from the keys.
-
-            # split into train and eval sets
-            if self.config.dataset.get("val_size") is not None:
-                val_size = self.config.dataset.val_size
-            else:
-                val_size = 0.2
-                warn("val_size not specified in config, defaulting to 0.2 (20% of data will be used for evaluation).")
-            if not (0 < val_size < 1):
-                raise ValueError("val_size must be a float between 0 and 1.")
-            
-            if self.config.dataset.get("split_by_patient", True):
-                warn("splitting by patient, not by sample ID for validation set.")
-                all_patient_ids = {item[self.patient_id_key] for item in self.data_dict.values()}
-                train_patient_ids, val_patient_ids = self._sample_val_split(list(all_patient_ids), val_size)
-                warn(f"Using {len(train_patient_ids)} train patients and {len(val_patient_ids)} val patients. Splitting by exact number of samples is not guaranteed.")
-                train_keys = [key for key, item in self.data_dict.items() if item[self.patient_id_key] in train_patient_ids]
-                val_keys = [key for key, item in self.data_dict.items() if item[self.patient_id_key] in val_patient_ids]
-                # print(f"Train samples: {len(train_keys)}, Val samples: {len(val_keys)} ({len(val_keys)/(len(train_keys)+len(val_keys)):.2%} of total samples for validation)")
-            else:
-                all_keys = list(self.data_dict.keys())
-                train_keys, val_keys = self._sample_val_split(all_keys, self.config.dataset.val_size)
-            
-            self.train_data = [self.data_dict[key] for key in train_keys]
-            self.val_data = [self.data_dict[key] for key in val_keys]
+                # split into train and eval sets
+                if self.config.dataset.get("val_size") is not None:
+                    val_size = self.config.dataset.val_size
+                else:
+                    val_size = 0.2
+                    warn("val_size not specified in config, defaulting to 0.2 (20% of data will be used for evaluation).")
+                if not (0 < val_size < 1):
+                    raise ValueError("val_size must be a float between 0 and 1.")
+                
+                if self.config.dataset.get("split_by_patient", True):
+                    warn("splitting by patient, not by sample ID for validation set.")
+                    all_patient_ids = {item[self.patient_id_key] for item in self.data_dict.values()}
+                    train_patient_ids, val_patient_ids = self._sample_val_split(list(all_patient_ids), val_size)
+                    warn(f"Using {len(train_patient_ids)} train patients and {len(val_patient_ids)} val patients. Splitting by exact number of samples is not guaranteed.")
+                    train_keys = [key for key, item in self.data_dict.items() if item[self.patient_id_key] in train_patient_ids]
+                    val_keys = [key for key, item in self.data_dict.items() if item[self.patient_id_key] in val_patient_ids]
+                    # print(f"Train samples: {len(train_keys)}, Val samples: {len(val_keys)} ({len(val_keys)/(len(train_keys)+len(val_keys)):.2%} of total samples for validation)")
+                else:
+                    all_keys = list(self.data_dict.keys())
+                    train_keys, val_keys = self._sample_val_split(all_keys, self.config.dataset.val_size)
+                
+                self.train_data = [self.data_dict[key] for key in train_keys]
+                self.val_data = [self.data_dict[key] for key in val_keys]
+            case "cross_val":
+                if not self._check_for_splits_as_datalist(self.config.dataset.dataset_file, ["training"]):
+                    raise ValueError("cross_val split type requires a datalist-style JSON file with 'training' key.")
+                data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
+                self.train_data = [item for item in data_dict["training"] if item.get("fold") != self.config.dataset.cross_val_fold]
+                self.val_data = [item for item in data_dict["training"] if item.get("fold") == self.config.dataset.cross_val_fold]
+                assert len(self.val_data) > 0, f"No samples found for fold {self.config.dataset.cross_val_fold} in the dataset file. Please check the fold assignments in the dataset file."
+                assert len(self.train_data) + len(self.val_data) == len(data_dict["training"]), "Train and val samples do not sum up to total samples in the dataset file. Please check the fold assignments in the dataset file."
+                
+                self._print_split_warning()
+            case _:
+                raise ValueError(f"Unknown split type: {self.config.dataset.split_type}. Supported split types are 'random', 'files', 'datalist', and 'cross_val'. It is now necessary to include this argument.")
 
         self.include_metadata_keys = self.config.dataset.get("include_metadata_keys", [])
         self.data_root = self.config.dataset.get("data_root", None)
@@ -418,19 +450,34 @@ class RiSingleDatasetFromFile(
     def _setup_dataset(self):
         self._set_data_keys_from_cfg()
 
-        if self._check_for_splits_as_datalist(self.config.dataset.dataset_file) or self.config.dataset.get("datalist_key") is not None:
-            datalist_key = self.config.dataset.get("datalist_key", "validation")
-            data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
-            assert datalist_key in data_dict.keys(), f"dataset_file must contain '{datalist_key}' key. If using a different key, please specify the `datalist_key` in the config."
-            self.data_dict = data_dict[datalist_key]
-            if isinstance(self.data_dict, dict):
-                self.data_dict = list(self.data_dict.values())
-            self._print_split_warning()
+        if self.config.dataset.type == "RiDatasetFromFile":
+            # we are loading a test file from a paired dataset
+            match self.config.dataset.split_type: 
+                case "files":
+                    if not isinstance(self.config.dataset.dataset_file, dict | DictConfig):
+                        raise TypeError("If split_type is 'files', dataset_file must be a dict or DictConfig.")
+                    assert 'test' in self.config.dataset.dataset_file.keys(), "If dataset_file is a dict for RiSingleDatasetFromFile, it must contain a 'test' key."
+                    dataset_file = self.config.dataset.dataset_file.test
+                    self.data_dict = self._load_dataset_file(dataset_file)
+                case "datalist" | "cross_val":
+                    if not self._check_for_splits_as_datalist(self.config.dataset.dataset_file, [self.config.dataset.get("test_key")]):
+                        raise ValueError("datalist split type requires a datalist-style JSON file with 'test' key.")
+                    data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
+                    self.data_dict = data_dict[self.config.dataset.test_key]
         else:
-            # we use the entire JSON file as is
-            self.data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
-            if isinstance(self.data_dict, dict):
-                self.data_dict = list(self.data_dict.values())
+            if self._check_for_splits_as_datalist(self.config.dataset.dataset_file) or self.config.dataset.get("datalist_key") is not None:
+                datalist_key = self.config.dataset.get("datalist_key", "validation")
+                data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
+                assert datalist_key in data_dict.keys(), f"dataset_file must contain '{datalist_key}' key. If using a different key, please specify the `datalist_key` in the config."
+                self.data_dict = data_dict[datalist_key]
+                if isinstance(self.data_dict, dict):
+                    self.data_dict = list(self.data_dict.values())
+                self._print_split_warning()
+            else:
+                # we use the entire JSON file as is
+                self.data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
+                if isinstance(self.data_dict, dict):
+                    self.data_dict = list(self.data_dict.values())
         self.include_metadata_keys = self.config.dataset.get("include_metadata_keys", [])
 
         self.data_root = self.config.dataset.get("data_root", None)

@@ -253,6 +253,15 @@ def get_model_config(model_dir, config_name="config-lock.yaml"):
     model_config = OmegaConf.load(config_file)
     return model_config
 
+def override_config_with_model_config(config, model_config, logger):
+    """Override settings in the evaluation config with those from the model config, if not already set."""
+    # for each of these fields, if it's not set in the evaluation config, but is set in the model config, copy it over and log it
+    fields_to_check = ["roi_size", "spacing", "num_classes"]
+    for field in fields_to_check:
+        if getattr(config, field, None) is None and getattr(model_config, field, None) is not None:
+            setattr(config, field, getattr(model_config, field))
+        elif getattr(config, field, None) is not None and getattr(model_config, field, None) is not None and getattr(config, field) != getattr(model_config, field):
+            logger.info(f"Model config value for {field} is {getattr(model_config, field)}, but evaluation config value is {getattr(config, field)}. Using evaluation config value.")
 
 def load_pretrained_weights(config: DictConfig, model: torch.nn.Module, logger: Logger):
     """Load pretrained weights, if specified in the config."""
@@ -274,7 +283,7 @@ def load_pretrained_weights(config: DictConfig, model: torch.nn.Module, logger: 
         logger.info("Successfully loaded pretrained weights.")
 
 
-def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: torch.nn.Module, logger: Logger):
+def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: torch.nn.Module, logger: Logger, strip_compiled: bool | None = None, strip_ddp: bool | None = None):
     """Load model weights from the best checkpoint for evaluation.
 
     Parameters
@@ -298,8 +307,8 @@ def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: to
     
     logger.info(f"Loading model weights from checkpoint: {last_checkpoint}")
 
-    strip_compiled = not config.get("compile", False)  # if we're not evaluating with compile, we need to strip the compiled prefixes
-    strip_ddp = not config.get("distributed", False)  # if we're not evaluating with distributed, we need to strip the DDP prefixes
+    strip_compiled = not config.get("compile", False) if strip_compiled is None else strip_compiled  # if we're not evaluating with compile, we need to strip the compiled prefixes
+    strip_ddp = not config.get("distributed", False) if strip_ddp is None else strip_ddp  # if we're not evaluating with distributed, we need to strip the DDP prefixes
     
     to_load = {"model": model}
     resume_from(to_load, last_checkpoint, logger, strict=True, strip_compiled=strip_compiled, strip_ddp=strip_ddp)
