@@ -1,0 +1,51 @@
+defaults:
+  - evaluate@dataset: dataset.yaml
+  - evaluate@post_transforms: post_transforms.yaml
+  - evaluate@metrics: metrics.yaml
+  - evaluate@_global_: global.yaml
+
+name: toy_dataset_training_20260410-113519-backend-nccl # name inside of logs dir
+output_prefix: ${name}_on_its_own_val
+
+eval_batch_size: 10 # batch size for evaluation
+num_workers: 16 # number of workers for data loading
+roi_size: null
+spacing: null  # taken from the training config, can be overridden
+num_classes: null # number of classes including background
+use_amp: false
+
+
+dataset:
+  type: RiSingleDatasetFromFile # dataset type
+  dataset_file: tests/test-data/liverv3_small/datalist.json
+  data_root: tests/test-data/liverv3_small/
+  datalist_key: "validation"
+  subset_size: null # use all samples, set to a number to use a subset of the dataset
+  orig_labels:   [0, 1, 2]
+  target_labels: [0, 1, 2]
+  auto_add_loadimage: true
+
+  transforms:
+    - type: MapLabelValue
+      orig_labels:   ${dataset.orig_labels}
+      target_labels: ${dataset.target_labels}
+    - type: EnsureChannelFirst 
+      channel_dim: no_channel
+    - type: Orientation
+      axcodes: 'RAS'
+    - type: Spacing
+      pixdim: ${spacing}
+      mode: ['bilinear', 'nearest']
+    - type: NormalizeIntensity
+      nonzero: true
+      channel_wise: true
+    - _target_: monai.transforms.SpatialPadd
+      keys: ['image']
+      spatial_size: ${roi_size}
+      mode: 'constant'
+      constant_values: -1.0 # -1 only permitted after norm
+    - _target_: monai.transforms.SpatialPadd
+      keys: ['label']
+      spatial_size: ${roi_size}
+      mode: 'constant'
+      constant_values: 0
