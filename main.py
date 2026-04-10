@@ -100,6 +100,14 @@ def train(config: DictConfig):
     dataset = setup_dataset(config)
     le = len(dataset.get_train_dataset())
     
+    if config.get('debug', False) and rank == 0:
+        dataloader_train = dataset.get_train_dataloader()
+        dataloader_val = dataset.get_val_dataloader()
+        first_batch = next(iter(dataloader_train))
+        logger.info(f"First training batch keys: {list(first_batch.keys())}")
+        first_val_batch = next(iter(dataloader_val))
+        logger.info(f"First validation batch keys: {list(first_val_batch.keys())}")
+
     optimizer = idist.auto_optim(setup_optimizer(model.parameters(), config))
     loss_fn = setup_loss(config).to(device=device)
     lr_scheduler = setup_lr_scheduler(optimizer, config, le)
