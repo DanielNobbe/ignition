@@ -1,5 +1,5 @@
 cache_mode: persistent # cache mode, can be 'memory' of 'lmdb'
-cache_dir: ${oc.env:TMPDIR, /storage/homefs/dn25y590}/daniel_persistent_cache # directory to store lm
+cache_dir: ${oc.env:TMPDIR, /storage/homefs/dn25y590/.cache}/daniel_persistent_cache # directory to store lm
 save_dataset_splits: true
 transforms:
   train:

@@ -12,6 +12,8 @@ val:  # TODO: Check if model already does a softmax? may need to add activation 
       include_background: true  # include background class in the discretization
       # keepdims: true
       # maybe we need a threshold here? or still argmax?
+    # - _target_: ignition.transforms.Debugd
+    #   keys: ['pred']
     - _target_: monai.transforms.AsDiscreted
       keys: ['label']  # keys to apply the discretization to
       argmax: false  # apply argmax to the predictions
