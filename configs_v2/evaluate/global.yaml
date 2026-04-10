@@ -23,7 +23,7 @@ inferer:  # set to null to disable sliding window inference
 
 default_post_transforms: # TODO: Check if model already does a softmax? may need to add activation here
   
-default_metrics:
+metrics:
   list:
   - _target_: monai.handlers.MeanDice
     _key_: mean_dice
@@ -54,6 +54,6 @@ default_metrics:
       keys: ['pred', 'label']  # keys to extract from the output
   key_metric_name: ${metrics.list[0]._key_} # name of the key metric for validation, used for early stopping and checkpointing
 
-default_engine_handlers:
+engine_handlers:
   - _target_: monai.handlers.MetricsSaver
     save_dir: ${output_dir}
