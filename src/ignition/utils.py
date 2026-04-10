@@ -283,7 +283,7 @@ def load_pretrained_weights(config: DictConfig, model: torch.nn.Module, logger: 
         logger.info("Successfully loaded pretrained weights.")
 
 
-def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: torch.nn.Module, logger: Logger):
+def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: torch.nn.Module, logger: Logger, strip_compiled: bool | None = None, strip_ddp: bool | None = None):
     """Load model weights from the best checkpoint for evaluation.
 
     Parameters
@@ -307,8 +307,8 @@ def load_checkpoint_for_evaluation(config: DictConfig, model_dir: str, model: to
     
     logger.info(f"Loading model weights from checkpoint: {last_checkpoint}")
 
-    strip_compiled = not config.get("compile", False)  # if we're not evaluating with compile, we need to strip the compiled prefixes
-    strip_ddp = not config.get("distributed", False)  # if we're not evaluating with distributed, we need to strip the DDP prefixes
+    strip_compiled = not config.get("compile", False) if strip_compiled is None else strip_compiled  # if we're not evaluating with compile, we need to strip the compiled prefixes
+    strip_ddp = not config.get("distributed", False) if strip_ddp is None else strip_ddp  # if we're not evaluating with distributed, we need to strip the DDP prefixes
     
     to_load = {"model": model}
     resume_from(to_load, last_checkpoint, logger, strict=True, strip_compiled=strip_compiled, strip_ddp=strip_ddp)
