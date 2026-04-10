@@ -195,6 +195,8 @@ class MonaiFolderUtilsMixin:
     def _create_dict(self, image_file, labels_dir: str | None = None):
         output = {self.image_key: os.path.join(self.images_dir, image_file)}
 
+        labels_dir = labels_dir or self.labels_dir
+
         if labels_dir is not None:
             file_name = image_file  # could also split off extension if it's different
             output[self.label_key] = os.path.join(labels_dir, file_name)
