@@ -1,0 +1,54 @@
+_target_: monai.transforms.Compose
+transforms:
+  - _target_: monai.transforms.Activationsd
+    keys: ['pred']  # keys to apply the activation to
+    softmax: true
+  - _target_: monai.transforms.AsDiscreted
+    keys: ['pred']  # keys to apply the discretization to
+    argmax: true  # apply argmax to the predictions
+    to_onehot: null #${num_classes}  # convert to one-hot encoding  -- already one-hot from output
+    include_background: true  # include background class in the discretization
+    # keepdims: true
+    # maybe we need a threshold here? or still argmax?
+# first save image because it needs to have 3D shape with values for labels
+  - _target_: monai.transforms.SaveImageD
+    _requires_: [output_dir]  # require output_dir to be defined
+    keys: ['image']  # keys to save the images
+    output_postfix: 'image'  # postfix to add to the saved images
+    output_dtype: 'float32'  # data type for the saved images
+    separate_folder: true  # save each image in a separate folder
+    print_log: true  # print log message when saving images
+    output_ext: '.nii.gz'  # file extension for the saved images
+    data_root_dir: ${dataset.data_root}  # to preserve folder structure
+  - _target_: monai.transforms.SaveImageD
+    _requires_: [output_dir]  # require output_dir to be defined
+    keys: ['pred']  # keys to save the images
+    output_postfix: 'pred'  # postfix to add to the saved images
+    output_dtype: 'uint8'  # data type for the saved images
+    separate_folder: true  # save each image in a separate folder
+    print_log: true  # print log message when saving images
+    output_ext: '.nii.gz'  # file extension for the saved images
+    data_root_dir: ${dataset.data_root}  # to preserve folder structure
+  - _target_: monai.transforms.SaveImageD
+    _requires_: [output_dir]  # require output_dir to be defined
+    keys: ['label']  # keys to save the images
+    output_postfix: 'label'  # postfix to add to the saved images
+    output_dtype: 'uint8'  # data type for the saved images
+    separate_folder: true  # save each image in a separate folder
+    print_log: true  # print log message when saving images
+    output_ext: '.nii.gz'  # file extension for the saved images
+    data_root_dir: ${dataset.data_root}  # to preserve folder structure
+  - _target_: monai.transforms.AsDiscreted
+    keys: ['pred']  # keys to apply the discretization to
+    argmax: false  # apply argmax to the predictions
+    to_onehot: ${num_classes}  # convert to one-hot encoding  -- already one-hot from output
+    include_background: true  # include background class in the discretization
+    # keepdims: true
+    # maybe we need a threshold here? or still argmax?
+  - _target_: monai.transforms.AsDiscreted
+    keys: ['label']  # keys to apply the discretization to
+    argmax: false  # apply argmax to the predictions
+    to_onehot: ${num_classes}  # convert to one-hot encoding
+    include_background: true  # include background class in the discretization
+    # it seems the label is not one-hot encoded, but we also don't need to argmax, since there is a threshold already. But we don't need that either
+    

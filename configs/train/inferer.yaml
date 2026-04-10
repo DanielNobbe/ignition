@@ -1,0 +1,7 @@
+_target_: monai.inferers.SlidingWindowInferer
+roi_size: ${roi_size} # roi size for inference
+sw_batch_size: ${eval_batch_size} # sliding window batch size
+overlap: 0.25
+mode: 'constant' # blending mode, can be 'constant' or 'gaussian'
+sigma_scale: 0.125 # scale for gaussian blending, only used if mode is 'gaussian'
+progress: true # show progress bar during inference
