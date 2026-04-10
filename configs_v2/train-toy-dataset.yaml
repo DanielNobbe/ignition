@@ -1,0 +1,161 @@
+defaults:
+  - train@__global__: global.yaml
+  - train@inferer: inferer.yaml
+  - train@post_transforms: post_transforms.yaml
+  - train/models@_global_: segresnetDS
+  - train@handlers: handlers.yaml
+  - train@dataset: dataset.yaml
+  - _self_
+
+name: toy_dataset_training
+notes: "you can place some notes here for details on the run. It will be stored in the config lock file and visible in tensorboard/wandb."
+
+batch_size: 4
+seed: 666
+eval_batch_size: 8
+learning_rate: 1.0e-4 # base learning rate
+num_workers: 16
+max_epochs: 20  # no early stopping
+use_amp: true # use AMP (Automatic Mixed Precision)
+distributed: false
+compile: true # use torch.compile to optimize the model
+
+log_every_iters: 1
+eval_every_epochs: 1
+num_classes: 3
+
+roi_size: [64, 64, 8]
+spacing: [1.0, 1.0, 1.0] # in mm
+model:
+  blocks_down: [1, 2, 2, 4]
+  # set to 3x2 for roi size divisible by 16 or 4x2 for roi 
+  # size divisible by 32 (in all dims)
+
+loss_function:
+  _target_: monai.losses.DiceCELoss
+  squared_pred: true
+  to_onehot_y: true
+  softmax: true
+  sigmoid: false
+  include_background: false
+  smooth_nr: 0
+  smooth_dr: 1.0e-05
+
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: ${learning_rate}
+  weight_decay: 1.0e-5
+
+lr_scheduler:
+  _target_: monai.optimizers.lr_scheduler.WarmupCosineSchedule
+  warmup_steps: 10 # in epochs
+  warmup_multiplier: 0.05
+  t_total: ${max_epochs}
+  end_lr: 2e-6
+
+dataset:
+  type: RiDatasetFromFile # dataset type
+  split_type: datalist
+  dataset_file: tests/test-data/liverv3_small/datalist.json
+  data_root: tests/test-data/liverv3_small/
+  
+  subset_size: null  # can be used for debugging
+  orig_labels:   [0, 1, 2]
+  target_labels: [0, 1, 2]
+  auto_add_loadimage: true
+
+  transforms:
+    train:
+      - type: MapLabelValue
+        orig_labels:   ${dataset.orig_labels}
+        target_labels: ${dataset.target_labels}
+      - type: EnsureChannelFirst
+        channel_dim: no_channel  # to automatically add channel dimension if not present
+      - type: Orientation
+        axcodes: 'RAS' # orientation codes for the image, RAS is standard for medical images
+      - type: Spacing
+        pixdim: ${spacing} # voxel dimensions in mm
+        mode: ['bilinear', 'nearest']
+      - _target_: monai.transforms.RandZoomd
+        keys: ['image', 'label']
+        min_zoom: 0.8
+        max_zoom: 1.2
+        prob: 0.8
+        mode: ['bilinear', 'nearest']
+        keep_size: true
+      - type: NormalizeIntensity
+        nonzero: false # normalize only non-zero values
+        channel_wise: true
+      - _target_: monai.transforms.SpatialPadd
+        keys: ['image']
+        spatial_size: ${roi_size}
+        mode: 'constant'
+        constant_values: -1.0 # -1 only permitted after norm
+      - _target_: monai.transforms.SpatialPadd
+        keys: ['label']
+        spatial_size: ${roi_size}
+        mode: 'constant'
+        constant_values: 0
+      - type: RandSpatialCrop
+        roi_size: ${roi_size}
+        random_size: false
+        random_center: true
+      - type: RandFlip
+        prob: 0.5
+        spatial_axis: 0
+      - type: RandFlip
+        prob: 0.5
+        spatial_axis: 1
+      - type: RandFlip
+        prob: 0.5
+        spatial_axis: 2
+      - type: RandGaussianNoise
+        prob: 0.2
+        mean: 0.0
+        std: 0.1 
+      - type: RandGaussianSmooth
+        prob: 0.2
+        sigma_x: [0.5, 1.5]
+        sigma_y: [0.5, 1.5]
+        sigma_z: [0.5, 1.5]
+      - type: RandScaleIntensity
+        prob: 1.0
+        factors: 0.1 # 0.1 means beween 0.9 and 1.1
+      - type: RandShiftIntensity
+        prob: 1.0
+        offsets: 0.1 # 0.1 means beween 0.9 and 1.1
+      - type: RandAdjustContrast
+        prob: 0.2
+        gamma: [0.7, 1.5]
+        invert_image: false
+      - type: RandAdjustContrast
+        prob: 0.2
+        gamma: [0.7, 1.5]
+        invert_image: true
+    val:
+      - type: MapLabelValue
+        orig_labels:   ${dataset.orig_labels}
+        target_labels: ${dataset.target_labels}
+      - type: EnsureChannelFirst
+        channel_dim: no_channel
+      - type: Orientation
+        axcodes: 'RAS'
+      - type: Spacing
+        pixdim: ${spacing} # voxel dimensions in mm
+        mode: ['bilinear', 'nearest']
+        align_corners: null
+      - type: NormalizeIntensity
+        nonzero: false
+        channel_wise: true
+      - _target_: monai.transforms.SpatialPadd
+        keys: ['image']
+        spatial_size: ${roi_size}
+        mode: 'constant'
+        constant_values: -1.0 # -1 only permitted after norm
+      - _target_: monai.transforms.SpatialPadd
+        keys: ['label']
+        spatial_size: ${roi_size}
+        mode: 'constant'
+        constant_values: 0
+      
