@@ -347,7 +347,8 @@ def setup_evaluator(
                 val_dataset,
                 num_workers=config.get("num_workers", 1),
                 collate_fn=list_data_collate,
-                batch_size=config.eval_batch_size
+                batch_size=config.eval_batch_size,
+                drop_last=False
             )
             post_transforms = instantiate_post_transforms(
                 config.post_transforms.get(name) if name is not None else config.post_transforms,
