@@ -230,7 +230,7 @@ def run(config: Any):
 # main entrypoint
 @hydra.main(
     version_base=None,
-    config_path="configs_v2",
+    config_path="configs",
     config_name="config.yaml",
 )
 def main(cfg: DictConfig):
