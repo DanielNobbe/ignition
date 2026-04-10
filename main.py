@@ -65,19 +65,30 @@ def train(config: DictConfig):
 
     logger.info("Configuration: \n%s", pformat(config))
 
-    # load datasets and create dataloaders
-    dataset = setup_dataset(config)
-    dataloader_train = dataset.get_train_dataloader()
-    dataloader_val = dataset.get_val_dataloader()
-    le = len(dataloader_train)
 
     device = idist.device()
 
+    if config.mode == "train":
+        model = idist.auto_model(
+            setup_model(config)
+        )
+    elif config.mode == "finetune":
+        if config.finetune.get("model_type") != "ignition":
+            raise ValueError(f"Finetuning for model type {config.finetune.model_type} is not supported. Only 'ignition' is currently implemented.")
+        model_dir = config.finetune.get("model_dir", None)
+        if model_dir is None:
+            raise ValueError("For finetuning, the 'model_dir' field must be specified in the config, pointing to the training output directory of the model to finetune.")
+        model_config = get_model_config(model_dir)
+        override_config_with_model_config(config, model_config, logger)
+        model = idist.auto_model(setup_model(model_config))
+        model = load_checkpoint_for_evaluation(config, model_dir, model, logger, strip_compiled=True, strip_ddp=True)  # we need to strip the compiled and ddp prefixes in case we're loading a checkpoint that was trained with those. Model needs to be fully loaded before we apply PEFT.
 
-    model = idist.auto_model(
-        setup_model(config)
-    )
-    
+        if config.finetune.get("peft", False):
+            from src.ignition.models.peft import try_out_peft
+            model = try_out_peft(model)
+        else:
+            logger.warning("Finetuning without PEFT. This will finetune all parameters, which may not be desired.")
+
     if config.get("compile", False):
         model = torch.compile(model)
         logger.info("Model compiled with torch.compile.")
@@ -85,6 +96,10 @@ def train(config: DictConfig):
     if config.get("pretrained") is not None:
         load_pretrained_weights(config, model, logger)
 
+    # load datasets and create dataloaders
+    dataset = setup_dataset(config)
+    le = len(dataset.get_train_dataset())
+    
     optimizer = idist.auto_optim(setup_optimizer(model.parameters(), config))
     loss_fn = setup_loss(config).to(device=device)
     lr_scheduler = setup_lr_scheduler(optimizer, config, le)
@@ -135,6 +150,9 @@ def evaluate(config: DictConfig):
         raise ValueError("For evaluation, the 'model_dir' field must be specified in the config, pointing to the training output directory.")
     
     model_config = get_model_config(model_dir)
+
+    if model_config.mode == "finetune" and model_config.finetune.get("peft", False):
+        raise ValueError("Evaluation of finetuned models with PEFT is not currently supported. Please implement loading the PEFT adapter.")
 
     logger = setup_logging(config)  # only logs on rank 0
 
@@ -193,12 +211,12 @@ def evaluate(config: DictConfig):
 
 def run(config: Any):
     """Run training or evaluation based on config mode."""
-    if config.mode == "train":
+    if config.mode in ["train", "finetune"]:
         train(config)
     elif config.mode == "eval":
         evaluate(config)
     else:
-        raise ValueError(f"Unknown mode: {config.mode}. Supported modes are 'train'.")
+        raise ValueError(f"Unknown mode: {config.mode}. Supported modes are 'train', 'finetune' and 'eval'.")
 
 
 # main entrypoint
