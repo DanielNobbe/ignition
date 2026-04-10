@@ -262,7 +262,7 @@ class RiDatasetFromFile(RiDatasetMixin, PairedDataset, MonaiTransformsMixin, Mon
         self.train_data = self._filter_data_by_keys(self.train_data, self.include_metadata_keys + self._get_data_keys())
         self.val_data = self._filter_data_by_keys(self.val_data, self.include_metadata_keys + self._get_data_keys())
 
-        if self.config.dataset.get("check_label_map", True):
+        if self.config.dataset.get("check_label_map", False):
             self.first_label_map = self.train_data[0].get(self.label_map_key)
             if self.first_label_map is None:
                 print(self.train_data[0].keys())
@@ -317,7 +317,7 @@ class RiDatasetFromFile(RiDatasetMixin, PairedDataset, MonaiTransformsMixin, Mon
     def _get_train_transforms(self):
         transforms = []
 
-        if self.config.dataset.get("check_label_map", True):
+        if self.config.dataset.get("check_label_map", False):
             transforms.append(
                 RiCheckLabelMap(
                     expected_label_map=self.first_label_map,
@@ -346,7 +346,7 @@ class RiDatasetFromFile(RiDatasetMixin, PairedDataset, MonaiTransformsMixin, Mon
     def _get_val_transforms(self):
         transforms = []
 
-        if self.config.dataset.get("check_label_map", True):
+        if self.config.dataset.get("check_label_map", False):
             transforms.append(
                 RiCheckLabelMap(
                     expected_label_map=self.first_label_map,
@@ -419,7 +419,7 @@ class RiSingleDatasetFromFile(
     def _get_transforms(self):
         transforms = []
 
-        if self.config.dataset.get("check_label_map", True):
+        if self.config.dataset.get("check_label_map", False):
             transforms.append(
                 RiCheckLabelMap(
                     expected_label_map=self.first_label_map,
