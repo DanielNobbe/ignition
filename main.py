@@ -233,11 +233,15 @@ def main(cfg: DictConfig):
 
     config = setup_config(cfg)
 
-    # Check if we're launched by torchrun (check for environment variables)
-    world_size = int(os.environ.get('WORLD_SIZE', -1))
+    # Initialize distributed only for real torchrun launches.
+    world_size = int(os.environ.get("WORLD_SIZE", "1"))
+    has_torchrun_env = all(
+        key in os.environ
+        for key in ("RANK", "LOCAL_RANK", "WORLD_SIZE")
+    )
 
-    if world_size > 1:
-        if int(os.environ.get('LOCAL_RANK')) == 0:
+    if has_torchrun_env and world_size > 1:
+        if int(os.environ.get("LOCAL_RANK", "0")) == 0:
             print(f"Running on {world_size} processes.")
         idist.initialize(config.backend)  # NOTE: We can't use idist.Parallel, it conflicts with Hydra
 
@@ -246,6 +250,8 @@ def main(cfg: DictConfig):
 
         idist.finalize()
     else:
+        if world_size > 1 and not has_torchrun_env:
+            print("Ignoring partial distributed environment and running single process.")
         print("Running on single process.")
         run(config)
 
