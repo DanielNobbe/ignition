@@ -4,7 +4,7 @@ Ignition is a lightweight Ignite-based training framework for volumetric (medica
 Our aim is for users to only write config files, which define the model and training parameters, based on a good set of defaults. 
 
 ### Installation
-For installation, please clone the repo and use 
+For installation, please clone the repo and use `uv` to create a virtual environment. Use `uv sync` to install the dependencies, and you're good to go. If you don't have `uv` installed, see [the `uv` website](https://docs.astral.sh/uv/). The project can be installed through other package managers too, since it has a `pyproject.toml` file, but we recommend `uv` for its speed.
 
 ### Usage
 For training a model, see as an example the `configs/train-toy-dataset.yaml` file, which can be ran using the `sh/train-toy.sh` file (which is set up for HPC clusters, most of the environment variables are superflous when running on an isolated machine).
