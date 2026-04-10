@@ -1,0 +1,76 @@
+{
+    "labels": {
+        "0": "background",
+        "1": "liver",
+        "2": "tumor"
+    },
+    "training": [
+        {
+            "id": 3,
+            "image": "images/liver_11.nii.gz",
+            "label": "labels/liver_11.nii.gz"
+        },
+        {
+            "id": 4,
+            "image": "images/liver_12.nii.gz",
+            "label": "labels/liver_12.nii.gz"
+        },
+        {
+            "id": 5,
+            "image": "images/liver_2.nii.gz",
+            "label": "labels/liver_2.nii.gz"
+        },
+        {
+            "id": 6,
+            "image": "images/liver_3.nii.gz",
+            "label": "labels/liver_3.nii.gz"
+        },
+        {
+            "id": 7,
+            "image": "images/liver_4.nii.gz",
+            "label": "labels/liver_4.nii.gz"
+        },
+        {
+            "id": 8,
+            "image": "images/liver_5.nii.gz",
+            "label": "labels/liver_5.nii.gz"
+        },
+        {
+            "id": 9,
+            "image": "images/liver_6.nii.gz",
+            "label": "labels/liver_6.nii.gz"
+        },
+        {
+            "id": 10,
+            "image": "images/liver_7.nii.gz",
+            "label": "labels/liver_7.nii.gz"
+        },
+        {
+            "id": 11,
+            "image": "images/liver_8.nii.gz",
+            "label": "labels/liver_8.nii.gz"
+        },
+        {
+            "id": 12,
+            "image": "images/liver_9.nii.gz",
+            "label": "labels/liver_9.nii.gz"
+        }
+    ],
+    "validation": [
+        {
+            "id": 0,
+            "image": "images/liver_0.nii.gz",
+            "label": "labels/liver_0.nii.gz"
+        },
+        {
+            "id": 1,
+            "image": "images/liver_1.nii.gz",
+            "label": "labels/liver_1.nii.gz"
+        },
+        {
+            "id": 2,
+            "image": "images/liver_10.nii.gz",
+            "label": "labels/liver_10.nii.gz"
+        }
+    ]
+}
