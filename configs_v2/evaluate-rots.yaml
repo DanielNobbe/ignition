@@ -2,7 +2,6 @@ defaults:
   - evaluate@dataset: dataset.yaml
   - evaluate@post_transforms: post_transforms.yaml
   - evaluate@metrics: metrics.yaml
-  - evaluate@engine_handlers: engine_handlers.yaml
   - evaluate@_global_: global.yaml
 
 name: rots_all_lesions_v3_20251205-114344-backend-nccl

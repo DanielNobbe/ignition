@@ -20,8 +20,6 @@ inferer:  # set to null to disable sliding window inference
   sigma_scale: 0.125 # scale for gaussian blending, only used if mode is 'gaussian'
   progress: true # show progress bar during inference
 
-
-default_post_transforms: # TODO: Check if model already does a softmax? may need to add activation here
   
 metrics:
   list:
