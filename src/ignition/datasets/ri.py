@@ -163,12 +163,12 @@ class RiDatasetFromFile(RiDatasetMixin, PairedDataset, MonaiTransformsMixin, Mon
 
         We support the following split types:
         1. random: We randomly split the dataset into train and val sets based on `val_size`.
-        2. files: We specify separate files for train and val sets in the config, through a dict in the `dataset_file` key.
-        3. datalist: We use a single JSON file with 'training' and 'validation' keys, which contain the respective splits. This is similar to the datalist format used in some MONAI examples.
+        2. files: We specify separate files for train and val sets in the config, through a dict in the `dataset_file` key. A n entry with the key "test" can be specified for a test run after training.
+        3. datalist: We use a single JSON file with 'training' and 'validation' keys, which contain the respective splits. This is similar to the datalist format used in some MONAI examples. `test_key` can be specified for a test run after training.
         4. cross_val: We use a datalist-style JSON file with keys
             "training" and "test". The items in the "training" key
             should each have a "fold" key, which specifies the fold
-            they belong to. Based on the `cross_val_fold` key in the config, we use one fold for validation and the rest for training.
+            they belong to. Based on the `cross_val_fold` key in the config, we use one fold for validation and the rest for training. `test_key` can be specified for a test run after training.
         
         We don't allow a default, to ensure backwards compatibility.
         """
@@ -246,6 +246,8 @@ class RiDatasetFromFile(RiDatasetMixin, PairedDataset, MonaiTransformsMixin, Mon
                 assert len(self.train_data) + len(self.val_data) == len(data_dict["training"]), "Train and val samples do not sum up to total samples in the dataset file. Please check the fold assignments in the dataset file."
                 
                 self._print_split_warning()
+            case _:
+                raise ValueError(f"Unknown split type: {self.config.dataset.split_type}. Supported split types are 'random', 'files', 'datalist', and 'cross_val'. It is now necessary to include this argument.")
 
         self.include_metadata_keys = self.config.dataset.get("include_metadata_keys", [])
         self.data_root = self.config.dataset.get("data_root", None)
@@ -448,19 +450,34 @@ class RiSingleDatasetFromFile(
     def _setup_dataset(self):
         self._set_data_keys_from_cfg()
 
-        if self._check_for_splits_as_datalist(self.config.dataset.dataset_file) or self.config.dataset.get("datalist_key") is not None:
-            datalist_key = self.config.dataset.get("datalist_key", "validation")
-            data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
-            assert datalist_key in data_dict.keys(), f"dataset_file must contain '{datalist_key}' key. If using a different key, please specify the `datalist_key` in the config."
-            self.data_dict = data_dict[datalist_key]
-            if isinstance(self.data_dict, dict):
-                self.data_dict = list(self.data_dict.values())
-            self._print_split_warning()
+        if self.config.dataset.type == "RiDatasetFromFile":
+            # we are loading a test file from a paired dataset
+            match self.config.dataset.split_type: 
+                case "files":
+                    if not isinstance(self.config.dataset.dataset_file, dict | DictConfig):
+                        raise TypeError("If split_type is 'files', dataset_file must be a dict or DictConfig.")
+                    assert 'test' in self.config.dataset.dataset_file.keys(), "If dataset_file is a dict for RiSingleDatasetFromFile, it must contain a 'test' key."
+                    dataset_file = self.config.dataset.dataset_file.test
+                    self.data_dict = self._load_dataset_file(dataset_file)
+                case "datalist" | "cross_val":
+                    if not self._check_for_splits_as_datalist(self.config.dataset.dataset_file, [self.config.dataset.get("test_key")]):
+                        raise ValueError("datalist split type requires a datalist-style JSON file with 'test' key.")
+                    data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
+                    self.data_dict = data_dict[self.config.dataset.test_key]
         else:
-            # we use the entire JSON file as is
-            self.data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
-            if isinstance(self.data_dict, dict):
-                self.data_dict = list(self.data_dict.values())
+            if self._check_for_splits_as_datalist(self.config.dataset.dataset_file) or self.config.dataset.get("datalist_key") is not None:
+                datalist_key = self.config.dataset.get("datalist_key", "validation")
+                data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
+                assert datalist_key in data_dict.keys(), f"dataset_file must contain '{datalist_key}' key. If using a different key, please specify the `datalist_key` in the config."
+                self.data_dict = data_dict[datalist_key]
+                if isinstance(self.data_dict, dict):
+                    self.data_dict = list(self.data_dict.values())
+                self._print_split_warning()
+            else:
+                # we use the entire JSON file as is
+                self.data_dict = self._load_dataset_file(self.config.dataset.dataset_file)
+                if isinstance(self.data_dict, dict):
+                    self.data_dict = list(self.data_dict.values())
         self.include_metadata_keys = self.config.dataset.get("include_metadata_keys", [])
 
         self.data_root = self.config.dataset.get("data_root", None)
