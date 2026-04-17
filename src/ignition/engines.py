@@ -22,8 +22,7 @@ from ignition.utils import split_dict_at_index
 from monai.utils.enums import CommonKeys as Keys
 from monai.engines.utils import IterationEvents
 from monai.transforms import reset_ops_id
-from monai.data.utils import list_data_collate
-
+from monai.data.utils import list_data_collate, worker_init_fn
 
 
 logger = logging.getLogger(__name__)
