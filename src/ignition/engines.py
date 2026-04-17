@@ -22,8 +22,7 @@ from ignition.utils import split_dict_at_index
 from monai.utils.enums import CommonKeys as Keys
 from monai.engines.utils import IterationEvents
 from monai.transforms import reset_ops_id
-from monai.data.utils import list_data_collate
-
+from monai.data.utils import list_data_collate, worker_init_fn
 
 
 logger = logging.getLogger(__name__)
@@ -254,15 +253,20 @@ def setup_trainer(
             else:
                 key_metric, other_metrics = None, None
 
+            dataloader = idist.auto_dataloader(
+                dataset.get_train_dataset(),
+                num_workers=config.get("num_workers", 1),
+                collate_fn=list_data_collate,
+                batch_size=config.batch_size,
+                shuffle=True,
+                pin_memory=True,
+                worker_init_fn=worker_init_fn,
+            )
+
             trainer = SupervisedTrainer(
                 device=device,
                 max_epochs=config.max_epochs,
-                train_data_loader=idist.auto_dataloader(
-                    dataset.get_train_dataset(),
-                    num_workers=config.get("num_workers", 1),
-                    collate_fn=list_data_collate,
-                    batch_size=config.batch_size
-                ),
+                train_data_loader=dataloader,
                 amp=config.get("use_amp", False),
                 network=model,
                 inferer=instantiate(config.inferer) if config.get("train_inferer") else None,
@@ -347,7 +351,9 @@ def setup_evaluator(
                 val_dataset,
                 num_workers=config.get("num_workers", 1),
                 collate_fn=list_data_collate,
+                worker_init_fn=worker_init_fn,
                 batch_size=config.eval_batch_size,
+                pin_memory=False,  # seems to cause error when usnig pinned memory? How strange
                 drop_last=False
             )
             post_transforms = instantiate_post_transforms(
