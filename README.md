@@ -1,10 +1,10 @@
 # Automated and manual AI frameworks for MRI: Performance and usability for liver parenchyma segmentation
 
-Daniël Nobbe, L. Zbinden, S. Poli, R. Sznitman, A. Huber\\
-ARTORG Center for Biomedical Engineering Research, University of Bern, Switzerland\\
+Daniël Nobbe, L. Zbinden, S. Poli, R. Sznitman, A. Huber  
+ARTORG Center for Biomedical Engineering Research, University of Bern, Switzerland  
 Inselspital, Bern University Hospital, Switzerland
 
-Thanks for reading our work. Feel free to connect on LinkedIn or send us an email: \\
+Thanks for reading our work! Feel free to connect on LinkedIn or send us an email:  
 [LinkedIn](https://www.linkedin.com/in/daniel-nobbe/) | [Email](mailto:daniel.nobbe@unibe.ch)
 
 ## Introduction
