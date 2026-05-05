@@ -1,5 +1,12 @@
 # Automated and manual AI frameworks for MRI: Performance and usability for liver parenchyma segmentation
 
+Daniël Nobbe, L. Zbinden, S. Poli, R. Sznitman, A. Huber
+ARTORG Center for Biomedical Engineering Research, University of Bern, Switzerland
+Inselspital, Bern University Hospital, Switzerland
+
+Thanks for reading our work. Feel free to connect on LinkedIn or send us an email:
+[LinkedIn](https://www.linkedin.com/in/daniel-nobbe/) | [Email](mailto:daniel.nobbe@unibe.ch)
+
 ## Introduction
 Employing AI models for semantic segmentation of CT and MRI has become a mainstay in clinical research, and has slowly been moving into clinical workflows. Over the last couple of years, nnUNet [1] has developed into the gold-standard segmentation tool. It provides an end-to-end framework, which includes automatically configuring models and inference. Other automatic segmentation frameworks have also been released, e.g. the one by MONAI [2]. Both frameworks have won segmentation challenges [3, 4].
 
