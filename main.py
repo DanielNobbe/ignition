@@ -129,7 +129,7 @@ def train(config: DictConfig):
     if config.engine_type == "ignite":
         trainer.run(
             idist.auto_dataloader(dataset.get_train_dataset()),
-            max_epochs=config.max_epochs,
+            max_epochs=config.max_epochs, shuffle=True, pin_memory=True
         )
     elif config.engine_type in ["monai", "vista3d"]:
         trainer.run()
