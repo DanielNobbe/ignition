@@ -1,4 +1,4 @@
-# <Title>
+# Automated and manual AI frameworks for MRI: Performance and usability for liver parenchyma segmentation
 
 ## Introduction
 Employing AI models for semantic segmentation of CT and MRI has become a mainstay in clinical research, and has slowly been moving into clinical workflows. Over the last couple of years, nnUNet [1] has developed into the gold-standard segmentation tool. It provides an end-to-end framework, which includes automatically configuring models and inference. Other automatic segmentation frameworks have also been released, e.g. the one by MONAI [2]. Both frameworks have won segmentation challenges [3, 4].
@@ -42,12 +42,22 @@ We use an external script to evaluate the models, to prevent ambiguity in the Di
 
 ## Results
 The three frameworks are quite close, with nnUNet inching out the others in Dice score. Overall, the two MONAI-based systems reach very nearly identical scores, with an insignificant difference. Interestingly, the IoU of MONAI AutoSeg and our Ignition models are slightly higher.
+<figure>
+  <img src="assets/ign-dice-foreground.svg" alt="Foreground Dice scores. nnUNet: 74.7% ± 0.26%, MONAI AutoSeg: 72.6% ± 0.40%, Ours: 72.6% ± 0.37%">
+  <figcaption>
+    Figure 1. Foreground Dice score for the three frameworks.
+  </figcaption>
+</figure>
+<!-- ![dice-fg](assets/ign-dice-foreground.svg)\ -->
 
-![dice-fg](assets/ign-dice-foreground.svg)
-Figure 1. Foreground Dice score for the three frameworks.
 
-![iou-fg](assets/ign-iou-foreground.svg)
-Figure 2. Foreground IoU score for the three frameworks.
+<figure>
+  <img src="assets/ign-iou-foreground.svg" alt="Foreground IoU scores. nnUNet: 61.3% ± 0.34%, MONAI AutoSeg: 63.1% ± 0.39%, Ours: 62.8% ± 0.37%">
+  <figcaption>
+    Figure 2. Foreground IoU score for the three frameworks.
+  </figcaption>
+</figure>
+
 
 ## Discussion
 Overall, we see that nnUNet is still a bit better than the other frameworks, and that we did not manage to manually tweak our model to outperform even the MONAI AutoSeg framework. Our future steps include looking at improved data augmentation and sampling.
