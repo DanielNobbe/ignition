@@ -1,0 +1,208 @@
+defaults:
+  - train@__global__: global.yaml
+  - train@inferer: inferer.yaml
+  - train@post_transforms: post_transforms.yaml
+  - train/models@_global_: segresnetDS
+  - train@handlers: handlers.yaml
+  - train@dataset: dataset.yaml
+  - _self_
+
+name: scr26_training
+notes: ""
+
+batch_size: 4
+seed: 666
+eval_batch_size: 36
+learning_rate: 1.5e-4
+num_workers: 16
+max_epochs: 1200
+use_amp: true
+distributed: true
+compile: true
+
+log_every_iters: 5
+eval_every_epochs: 5
+num_classes: 12
+
+model:
+  blocks_down: [5, 2, 2, 2, 4]
+roi_size: [320, 256, 64]
+spacing: [1.188, 1.188, 3.0]
+min_spacing: [0.9375, 0.9375, 3.0]  # if lower will be resized
+max_spacing: [1.48, 1.48, 3.0] # if higher will be resized
+
+
+loss_function:
+  _target_: monai.losses.DiceCELoss
+  squared_pred: true
+  to_onehot_y: true
+  softmax: true
+  sigmoid: false
+  include_background: false
+  smooth_nr: 0
+  smooth_dr: 1.0e-05
+
+
+optimizer:
+  _target_: torch.optim.AdamW
+  lr: ${learning_rate}
+  weight_decay: 1.0e-5
+
+
+lr_scheduler:
+  _target_: ignition.lr_schedulers.WarmupLRWrapper
+  warmup_steps: 10 # should be epochs
+  base_scheduler:
+    _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
+    T_0: 600
+    eta_min: 1.0e-6
+
+dataset:
+  type: RiDatasetFromFile # dataset type
+  split_type: cross_val
+  dataset_file: data-root/dataset_crossval_5_folds.json
+  data_root: data-root/  # to be used for loading files
+  cross_val_fold: 0
+
+  cache_mode: persistent
+  
+  subset_size: null
+  auto_add_loadimage: true
+  check_label_map: false
+
+  transforms:
+    train:
+      - _target_: monai.transforms.EnsureChannelFirstd
+        keys: ['image', 'label']
+        channel_dim: no_channel  # to automatically add channel dimension if not present
+      - _target_: monai.transforms.NormalizeIntensityd
+        keys: ['image']
+        nonzero: false
+        channel_wise: true
+        subtrahend: null
+        divisor: null
+      - _target_: monai.transforms.Orientationd
+        keys: ['image', 'label']
+        axcodes: 'RAS'
+        lazy: true
+      - _target_: monai.transforms.Spacingd
+        keys: ['image', 'label']
+        pixdim: ${spacing}
+        mode: ['bilinear', 'nearest']
+        align_corners: null
+        min_pixdim: ${min_spacing}
+        max_pixdim: ${max_spacing}
+        lazy: true
+      - _target_: monai.transforms.RandZoomd
+        keys: ['image', 'label']
+        min_zoom: 0.8
+        max_zoom: 1.2
+        prob: 0.8
+        mode: ['bilinear', 'nearest']
+        keep_size: true
+        lazy: true
+      - _target_: monai.transforms.SpatialPadd
+        keys: ['image']
+        spatial_size: ${roi_size}
+        mode: 'constant'
+        constant_values: -1.0  # after norm, -1 is lowest value
+        lazy: true
+      - _target_: monai.transforms.SpatialPadd
+        keys: ['label']
+        spatial_size: ${roi_size}
+        mode: 'constant'
+        constant_values: 0
+        lazy: true
+      - _target_: monai.transforms.RandRotated
+        keys: ['image', 'label']
+        prob: 1.0
+        range_x: 0.13 # approx. 8 degrees
+        range_y: 0.0
+        range_z: 0.0
+        mode: ['bilinear', 'nearest']
+        lazy: true
+      - _target_: monai.transforms.RandSpatialCropd
+        keys: ['image', 'label']
+        roi_size: ${roi_size}
+        random_size: false
+        random_center: true
+        lazy: true
+      - _target_: monai.transforms.RandFlipd
+        keys: ['image', 'label']
+        prob: 0.5
+        spatial_axis: 0
+        lazy: true
+      - _target_: monai.transforms.RandFlipd
+        keys: ['image', 'label']
+        prob: 0.5
+        spatial_axis: 1
+        lazy: true
+      - _target_: monai.transforms.RandFlipd
+        keys: ['image', 'label']
+        prob: 0.5
+        spatial_axis: 2
+        lazy: true
+      - _target_: monai.transforms.RandGaussianNoised
+        keys: ['image']
+        prob: 0.2
+        mean: 0.0
+        std: 0.1
+      - _target_: monai.transforms.RandGaussianSmoothd
+        keys: ['image']
+        prob: 0.2
+        sigma_x: [0.5, 1.5]
+        sigma_y: [0.5, 1.5]
+        sigma_z: [0.5, 1.5]
+      - _target_: monai.transforms.RandScaleIntensityd
+        keys: ['image']
+        prob: 1.0
+        factors: 0.1
+      - _target_: monai.transforms.RandShiftIntensityd
+        keys: ['image']
+        prob: 1.0
+        offsets: 0.1
+      - _target_: monai.transforms.RandAdjustContrastd
+        keys: ['image']
+        prob: 0.
+        gamma: [0.7, 1.5]
+        invert_image: false
+      - _target_: monai.transforms.RandAdjustContrastd
+        keys: ['image']
+        prob: 0.2
+        gamma: [0.7, 1.5]
+        invert_image: true
+    val:
+      - _target_: monai.transforms.EnsureChannelFirstd
+        keys: ['image', 'label']
+        channel_dim: no_channel  # to automatically add channel dimension if not present
+      - _target_: monai.transforms.NormalizeIntensityd
+        keys: ['image']
+        nonzero: false
+        channel_wise: true
+        subtrahend: null
+        divisor: null
+      - _target_: monai.transforms.Orientationd
+        keys: ['image', 'label']
+        axcodes: 'RAS'
+        lazy: true
+      - _target_: monai.transforms.Spacingd
+        keys: ['image', 'label']
+        pixdim: ${spacing}
+        mode: ['bilinear', 'nearest']
+        align_corners: null
+        min_pixdim: ${min_spacing}
+        max_pixdim: ${max_spacing}
+        lazy: true
+      - _target_: monai.transforms.SpatialPadd
+        keys: ['image']
+        spatial_size: ${roi_size}
+        mode: 'constant'
+        constant_values: -1.0 # after norm, -1 is lowest value
+        lazy: true
+      - _target_: monai.transforms.SpatialPadd
+        keys: ['label']
+        spatial_size: ${roi_size}
+        mode: 'constant'
+        constant_values: 0
+        lazy: true
+      
